@@ -125,10 +125,11 @@ function App(){
    const waitFrame=()=>new Promise(resolve=>setTimeout(resolve,1000/24));
    for(const file of photoFiles){
     const currentClipSeconds=completedClips===photoFiles.length-1&&audioDuration>sequenceElapsed?Math.max(clipSeconds,audioDuration-sequenceElapsed):clipSeconds;
-    const url=URL.createObjectURL(file),clipStart=performance.now();
+    const url=URL.createObjectURL(file);let clipStart=0,activeVideo=null;
     try{
      if(file.type.startsWith('image/')){
       const img=await new Promise((resolve,reject)=>{const el=new Image();el.onload=()=>resolve(el);el.onerror=()=>reject(new Error('photo load failed'));el.src=url});
+      clipStart=performance.now();
       const scale=Math.max(canvas.width/img.width,canvas.height/img.height),w=img.width*scale,h=img.height*scale;
       while(performance.now()-clipStart<currentClipSeconds*1000){
        const elapsed=(performance.now()-clipStart)/1000;
@@ -138,8 +139,8 @@ function App(){
        await waitFrame();
       }
      }else if(file.type.startsWith('video/')){
-      const video=await new Promise((resolve,reject)=>{const el=document.createElement('video');el.preload='auto';el.muted=true;el.playsInline=true;el.onloadeddata=()=>resolve(el);el.onerror=()=>reject(new Error('video load failed'));el.src=url;el.load()});
-      video.loop=true;await video.play();
+      activeVideo=await new Promise((resolve,reject)=>{const el=document.createElement('video');el.preload='auto';el.muted=true;el.playsInline=true;el.onloadeddata=()=>resolve(el);el.onerror=()=>reject(new Error('video load failed'));el.src=url;el.load()});
+      const video=activeVideo;video.loop=true;await video.play();clipStart=performance.now();
       while(performance.now()-clipStart<currentClipSeconds*1000){
        const elapsed=(performance.now()-clipStart)/1000;
        ctx.fillStyle='#09080d';ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -148,9 +149,8 @@ function App(){
        drawCaptionAndTransition(elapsed,currentClipSeconds);
        await waitFrame();
       }
-      video.pause();video.removeAttribute('src');video.load();
      }else{throw new Error('unsupported media type')}
-    }finally{URL.revokeObjectURL(url)}
+    }finally{if(activeVideo){activeVideo.pause();activeVideo.removeAttribute('src');activeVideo.load()}URL.revokeObjectURL(url)}
     sequenceElapsed+=currentClipSeconds;completedClips++;setVideoExportProgress(Math.round(completedClips/photoFiles.length*100));
    }
    setVideoExportProgress(99);
