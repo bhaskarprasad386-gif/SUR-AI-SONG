@@ -10,9 +10,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -22,10 +27,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - name: Install dependencies
         run: npm install
       - name: Build production app
         run: npm run build
+      - name: Verify Pages output
+        run: test -f dist/index.html && test -f dist/manifest.webmanifest && test -f dist/sw.js
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
@@ -36,6 +44,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
