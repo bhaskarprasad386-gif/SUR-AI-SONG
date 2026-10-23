@@ -95,21 +95,27 @@ function App(){
    const finished=new Promise((resolve,reject)=>{recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onerror=()=>reject(new Error('recording failed'));recorder.onstop=()=>resolve(new Blob(chunks,{type:mime}))});
    recorder.start(250);
    const lyricLines=lyrics.split('\n').map(line=>line.trim()).filter(line=>line&&!/^\[.*\]$/.test(line));
+   const manualCaptions=timedLyrics.split('\n').map(line=>{const m=line.match(/^\s*(\d{1,2}):(\d{2})\s*\|\s*(.+)$/);return m?{at:Number(m[1])*60+Number(m[2]),text:m[3].trim()}:null}).filter(Boolean).sort((x,y)=>x.at-y.at);
    const maxWidth=canvas.width*.84,transitionSeconds=Math.min(.45,clipSeconds/4);
-   let sequenceElapsed=0;
+   let sequenceElapsed=0,completedClips=0;
    const drawCaptionAndTransition=(clipElapsed)=>{
-    if(showLyricOverlay&&lyricLines.length){
-     const caption=manualCaptions.length?manualCaptions.filter(item=>item.at<=sequenceElapsed+clipElapsed).at(-1)?.text:lyricLines[Math.floor((sequenceElapsed+clipElapsed)/captionSeconds)%lyricLines.length];\n     let line=(caption||'').slice(0,180);
-     ctx.font='bold 34px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-     while(ctx.measureText(line).width>maxWidth&&line.length>8)line=line.slice(0,-2)+'…';
-     const boxW=Math.min(maxWidth,ctx.measureText(line).width+48);
-     ctx.fillStyle='rgba(8,7,13,.78)';ctx.fillRect((canvas.width-boxW)/2,canvas.height-112,boxW,66);
-     ctx.fillStyle='#fff';ctx.fillText(line,canvas.width/2,canvas.height-79,maxWidth);
+    if(showLyricOverlay&&((manualCaptions.length>0)||lyricLines.length)){
+     const caption=manualCaptions.length?manualCaptions.filter(item=>item.at<=sequenceElapsed+clipElapsed).at(-1)?.text:lyricLines[Math.floor((sequenceElapsed+clipElapsed)/captionSeconds)%lyricLines.length];
+     let line=(caption||'').slice(0,180);
+     if(line){
+      ctx.font='bold 34px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      while(ctx.measureText(line).width>maxWidth&&line.length>8)line=line.slice(0,-2)+'…';
+      const boxW=Math.min(maxWidth,ctx.measureText(line).width+48);
+      ctx.fillStyle='rgba(8,7,13,.78)';ctx.fillRect((canvas.width-boxW)/2,canvas.height-112,boxW,66);
+      ctx.fillStyle='#fff';ctx.fillText(line,canvas.width/2,canvas.height-79,maxWidth);
+     }
     }
-    const fadeIn=Math.min(1,clipElapsed/transitionSeconds);
-    const fadeOut=Math.min(1,(clipSeconds-clipElapsed)/transitionSeconds);
-    const opacity=1-Math.min(fadeIn,fadeOut);
-    if(opacity>0){ctx.fillStyle='rgba(0,0,0,'+opacity.toFixed(3)+')';ctx.fillRect(0,0,canvas.width,canvas.height)}
+    if(transitionStyle==='fade'){
+     const fadeIn=Math.min(1,clipElapsed/transitionSeconds);
+     const fadeOut=Math.min(1,(clipSeconds-clipElapsed)/transitionSeconds);
+     const opacity=1-Math.min(fadeIn,fadeOut);
+     if(opacity>0){ctx.fillStyle='rgba(0,0,0,'+opacity.toFixed(3)+')';ctx.fillRect(0,0,canvas.width,canvas.height)}
+    }
    };
    const waitFrame=()=>new Promise(resolve=>setTimeout(resolve,1000/24));
    for(const file of photoFiles){
@@ -147,7 +153,7 @@ function App(){
    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
    notify('WebM export तैयार: timed lyrics और fade transitions शामिल हैं। Audio source: '+({none:'बिना audio',music:'local music preview',cleaned:'cleaned voice',voice:'uploaded voice',recording:'recorded voice'}[videoAudioSource])+'.');
   }catch(e){notify('Export नहीं हो सका। Browser audio/codec support जांचें या कम photos चुनें।')}
-  finally{if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false)}
+  finally{if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false);setVideoExportProgress(0)}
  };
  const nav=(id)=>setActive(id); const current=steps.find(s=>s.id===active)||steps[0];
  return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark"><AudioLines size={23}/></div><div><strong>Sur AI <span>Studio</span></strong><small>YOUR PERSONAL MUSIC SPACE</small></div></div><button className="new-project" onClick={()=>{setTitle('नया गाना');setLyrics('');setStory('');setActive('write');notify('नया प्रोजेक्ट शुरू हुआ')}}><Plus size={17}/> नया प्रोजेक्ट</button><div className="nav-label">CREATE YOUR SONG</div><nav>{steps.map(s=><button key={s.id} onClick={()=>nav(s.id)} className={'nav-item '+(active===s.id?'selected':'')}><span className="nav-icon"><s.icon size={18}/></span><span className="nav-copy"><b>{s.title}</b><small>{s.sub}</small></span>{active===s.id&&<ChevronRight size={16}/>}</button>)}</nav><div className="nav-label library-label">YOUR WORKSPACE</div><button className="nav-item" onClick={()=>setShowProjects(v=>!v)}><span className="nav-icon"><Library size={18}/></span><span className="nav-copy"><b>मेरे प्रोजेक्ट</b><small>Saved creations</small></span></button><div className="sidebar-bottom"><div className="tip-card"><Sparkles size={18}/><b>आपकी आवाज़, आपका संगीत</b><p>अपने विचारों को एक पूरे गाने और वीडियो में बदलें।</p></div><button className="nav-item" onClick={()=>notify('सेटिंग्स जल्द उपलब्ध होंगी।')}><span className="nav-icon"><Settings2 size={18}/></span><span className="nav-copy"><b>सेटिंग्स</b></span></button><div className="profile"><div className="avatar">S</div><div><b>My Studio</b><small>Personal workspace</small></div><CircleHelp size={17}/></div></div></aside>
