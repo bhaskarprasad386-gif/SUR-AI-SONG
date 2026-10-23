@@ -143,7 +143,7 @@ function App(){
     const url=URL.createObjectURL(file);let clipStart=0,activeVideo=null;
     try{
      if(file.type.startsWith('image/')){
-      const img=await new Promise((resolve,reject)=>{const el=new Image();let settled=false;const timer=setTimeout(()=>{if(settled)return;settled=true;el.onload=el.onerror=null;el.src='';reject(new Error('photo load timeout'))},15000);el.onload=()=>{if(settled)return;settled=true;clearTimeout(timer);resolve(el)};el.onerror=()=>{if(settled)return;settled=true;clearTimeout(timer);reject(new Error('photo load failed'))};el.src=url});
+      const img=await new Promise((resolve,reject)=>{const el=new Image();let settled=false;const timer=setTimeout(()=>{if(settled)return;settled=true;clearInterval(cancelPoll);el.onload=el.onerror=null;el.src='';reject(new Error('photo load timeout'))},15000);const cancelPoll=setInterval(()=>{if(!exportCancelRef.current||settled)return;settled=true;clearTimeout(timer);clearInterval(cancelPoll);el.onload=el.onerror=null;el.src='';reject(new Error('export cancelled'))},150);el.onload=()=>{if(settled)return;settled=true;clearTimeout(timer);clearInterval(cancelPoll);resolve(el)};el.onerror=()=>{if(settled)return;settled=true;clearTimeout(timer);clearInterval(cancelPoll);reject(new Error('photo load failed'))};el.src=url});
       if(exportCancelRef.current)throw new Error('export cancelled');
       clipStart=performance.now();
       const scale=Math.max(canvas.width/img.width,canvas.height/img.height),w=img.width*scale,h=img.height*scale;
@@ -156,7 +156,7 @@ function App(){
        await waitFrame();
       }
      }else if(file.type.startsWith('video/')){
-      activeVideo=await new Promise((resolve,reject)=>{const el=document.createElement('video');let settled=false;const cleanup=()=>{el.onloadeddata=el.onerror=null;el.pause();el.removeAttribute('src');el.load()};const timer=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error('video load timeout'))},15000);el.preload='auto';el.muted=true;el.playsInline=true;el.onloadeddata=()=>{if(settled)return;settled=true;clearTimeout(timer);resolve(el)};el.onerror=()=>{if(settled)return;settled=true;clearTimeout(timer);cleanup();reject(new Error('video load failed'))};el.src=url;el.load()});
+      activeVideo=await new Promise((resolve,reject)=>{const el=document.createElement('video');let settled=false;const cleanup=()=>{el.onloadeddata=el.onerror=null;el.pause();el.removeAttribute('src');el.load()};const timer=setTimeout(()=>{if(settled)return;settled=true;clearInterval(cancelPoll);cleanup();reject(new Error('video load timeout'))},15000);const cancelPoll=setInterval(()=>{if(!exportCancelRef.current||settled)return;settled=true;clearTimeout(timer);clearInterval(cancelPoll);cleanup();reject(new Error('export cancelled'))},150);el.preload='auto';el.muted=true;el.playsInline=true;el.onloadeddata=()=>{if(settled)return;settled=true;clearTimeout(timer);clearInterval(cancelPoll);resolve(el)};el.onerror=()=>{if(settled)return;settled=true;clearTimeout(timer);clearInterval(cancelPoll);cleanup();reject(new Error('video load failed'))};el.src=url;el.load()});
       if(exportCancelRef.current)throw new Error('export cancelled');
       const video=activeVideo;video.loop=true;await video.play();if(exportCancelRef.current)throw new Error('export cancelled');clipStart=performance.now();
       while(performance.now()-clipStart<currentClipSeconds*1000&&!exportCancelRef.current){
