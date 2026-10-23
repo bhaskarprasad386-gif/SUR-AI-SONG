@@ -1,5 +1,5 @@
-const CACHE = 'sur-ai-studio-shell-v2';
-const APP_SHELL = ['./', './index.html', './manifest.webmanifest'];
+const CACHE = 'sur-ai-studio-shell-v3';
+const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 const isCacheableRequest = (request) => request.method === 'GET' && !request.headers.has('range');
 
 self.addEventListener('install', (event) => {
