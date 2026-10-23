@@ -1,19 +1,24 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const repairLegacyVoiceHandler = () => ({
-  name: 'repair-legacy-voice-handler',
+const repairLegacyAppSource = () => ({
+  name: 'repair-legacy-app-source',
   enforce: 'pre',
   transform(code, id) {
     if (!id.endsWith('/src/main.jsx')) return null;
-    const broken = "onChange={e=>setFile(e,f=>{replaceProcessedUrl('');replaceRecordingUrl('');setVoiceFile(f)})}";
-    const repaired = 'onChange={e=>setFile(e,setVoiceFile)}';
-    if (!code.includes(broken)) return null;
-    return { code: code.replace(broken, repaired), map: null };
+    const lines = code.split('\n');
+    const voiceNeedle = "onChange={e=>setFile(e,f=>{replaceProcessedUrl('');replaceRecordingUrl('');setVoiceFile(f)})}";
+    const voiceReplacement = 'onChange={e=>setFile(e,setVoiceFile)}';
+    if (lines[210]?.includes("active==='voice'")) {
+      lines[210] = lines[210].replace(voiceNeedle, voiceReplacement);
+    }
+    if (!lines[211]?.includes("active==='music'")) return null;
+    lines[211] = " {active==='music'&&<MusicDirector/>}";
+    return { code: "import MusicDirector from './MusicDirector.jsx';\n" + lines.join('\n'), map: null };
   },
 });
 
 export default defineConfig({
-  plugins: [repairLegacyVoiceHandler(), react()],
+  plugins: [repairLegacyAppSource(), react()],
   base: process.env.GITHUB_ACTIONS ? '/SUR-AI-SONG/' : '/',
 });
