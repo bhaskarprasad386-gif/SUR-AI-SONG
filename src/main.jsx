@@ -13,9 +13,16 @@ const steps=[{id:'write',n:'01',title:'गीत लिखें',sub:'AI Songwr
 const moods=['रोमांटिक','दर्द भरा','खुशियों वाला','सफर','भक्ति','जोश'];
 
 function audioBufferToWav(buffer){
- const channels=buffer.numberOfChannels,frames=buffer.length,rate=buffer.sampleRate,bytes=44+frames*channels*2,view=new DataView(new ArrayBuffer(44+frames*channels*2));
+ const channels=buffer.numberOfChannels,frames=buffer.length,rate=buffer.sampleRate,bytes=44+frames*channels*2;
+ if(!Number.isSafeInteger(bytes)||bytes<44||channels<1||channels>2||frames<1||!Number.isFinite(rate)||rate<1)throw new Error('Invalid audio buffer');
+ const view=new DataView(new ArrayBuffer(bytes));
  const write=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i))};write(0,'RIFF');view.setUint32(4,bytes-8,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,channels,true);view.setUint32(24,rate,true);view.setUint32(28,rate*channels*2,true);view.setUint16(32,channels*2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,bytes-44,true);
- let peak=0;for(let ch=0;ch<channels;ch++){const d=buffer.getChannelData(ch);for(let i=0;i<frames;i++)peak=Math.max(peak,Math.abs(d[i]));}const gain=peak>0?Math.min(2,0.92/peak):1;let o=44;for(let i=0;i<frames;i++)for(let ch=0;ch<channels;ch++){const s=Math.max(-1,Math.min(1,buffer.getChannelData(ch)[i]*gain));view.setInt16(o,s<0?s*32768:s*32767,true);o+=2;}return new Blob([view],{type:'audio/wav'});
+ // Cache channel views once: avoid repeatedly calling getChannelData in the sample loop.
+ const data=Array.from({length:channels},(_,ch)=>buffer.getChannelData(ch));let peak=0;
+ for(let ch=0;ch<channels;ch++)for(let i=0;i<frames;i++){const sample=data[ch][i];if(Number.isFinite(sample))peak=Math.max(peak,Math.abs(sample));}
+ const gain=peak>0?Math.min(2,0.92/peak):1;let o=44;
+ for(let i=0;i<frames;i++)for(let ch=0;ch<channels;ch++){const raw=data[ch][i],sample=Number.isFinite(raw)?raw*gain:0,clamped=Math.max(-1,Math.min(1,sample));view.setInt16(o,clamped<0?clamped*32768:clamped*32767,true);o+=2;}
+ return new Blob([view],{type:'audio/wav'});
 }
 function App(){
  const [active,setActive]=useState('write'),[title,setTitle]=useState('तेरे नाम की बारिश'),[theme,setTheme]=useState('रोमांटिक'),[language,setLanguage]=useState('हिंदी'),[story,setStory]=useState('दो लोग दूर हैं, लेकिन हर बारिश उन्हें एक-दूसरे की याद दिलाती है।'),[lyrics,setLyrics]=useState(''),[voiceFile,setVoiceFile]=useState(null),[refFile,setRefFile]=useState(null),[photoFiles,setPhotoFiles]=useState([]),[toast,setToast]=useState(''),[tempo,setTempo]=useState(92),[tone,setTone]=useState('Warm & intimate'),[layers,setLayers]=useState([{name:'Lead vocal',kind:'Voice',on:true},{name:'Acoustic guitar',kind:'Instrument',on:true},{name:'Soft piano',kind:'Instrument',on:true},{name:'Strings & pads',kind:'Atmosphere',on:false},{name:'Backing vocals',kind:'Voice',on:true}]);
