@@ -143,7 +143,7 @@ function App(){
     const url=URL.createObjectURL(file);let clipStart=0,activeVideo=null;
     try{
      if(file.type.startsWith('image/')){
-      const img=await new Promise((resolve,reject)=>{const el=new Image();el.onload=()=>resolve(el);el.onerror=()=>reject(new Error('photo load failed'));el.src=url});
+      const img=await new Promise((resolve,reject)=>{const el=new Image();let settled=false;const timer=setTimeout(()=>{if(settled)return;settled=true;el.onload=el.onerror=null;el.src='';reject(new Error('photo load timeout'))},15000);el.onload=()=>{if(settled)return;settled=true;clearTimeout(timer);resolve(el)};el.onerror=()=>{if(settled)return;settled=true;clearTimeout(timer);reject(new Error('photo load failed'))};el.src=url});
       if(exportCancelRef.current)throw new Error('export cancelled');
       clipStart=performance.now();
       const scale=Math.max(canvas.width/img.width,canvas.height/img.height),w=img.width*scale,h=img.height*scale;
@@ -156,7 +156,7 @@ function App(){
        await waitFrame();
       }
      }else if(file.type.startsWith('video/')){
-      activeVideo=await new Promise((resolve,reject)=>{const el=document.createElement('video');el.preload='auto';el.muted=true;el.playsInline=true;el.onloadeddata=()=>resolve(el);el.onerror=()=>reject(new Error('video load failed'));el.src=url;el.load()});
+      activeVideo=await new Promise((resolve,reject)=>{const el=document.createElement('video');let settled=false;const cleanup=()=>{el.onloadeddata=el.onerror=null;el.pause();el.removeAttribute('src');el.load()};const timer=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error('video load timeout'))},15000);el.preload='auto';el.muted=true;el.playsInline=true;el.onloadeddata=()=>{if(settled)return;settled=true;clearTimeout(timer);resolve(el)};el.onerror=()=>{if(settled)return;settled=true;clearTimeout(timer);cleanup();reject(new Error('video load failed'))};el.src=url;el.load()});
       if(exportCancelRef.current)throw new Error('export cancelled');
       const video=activeVideo;video.loop=true;await video.play();if(exportCancelRef.current)throw new Error('export cancelled');clipStart=performance.now();
       while(performance.now()-clipStart<currentClipSeconds*1000&&!exportCancelRef.current){
@@ -182,7 +182,7 @@ function App(){
    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
    setVideoExportProgress(100);
    notify('WebM file download शुरू किया गया। यदि डाउनलोड न दिखे तो Chrome Downloads देखें। Audio source: '+({none:'बिना audio',music:'local music preview',cleaned:'cleaned voice',voice:'uploaded voice',recording:'recorded voice'}[videoAudioSource])+'.');
-  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(e?.message==='export cancelled'?'Export रद्द कर दिया गया। Temporary media cleanup हो गया।':e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।':e?.message==='audio load failed'?'Audio file खुल नहीं सकी। फ़ाइल दोबारा चुनें।':e?.message==='audio too large'?'Mobile export के लिए audio file 30 MB से छोटी रखें।':e?.message==='audio too long'?'Mobile export के लिए audio अधिकतम 3 मिनट की होनी चाहिए।':e?.message==='empty export'?'Browser ने खाली video बनाया। Chrome में फिर कोशिश करें या कम media चुनें।':'Export विफल हुआ। Chrome में media format, memory और audio support जांचें।')}
+  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(e?.message==='export cancelled'?'Export रद्द कर दिया गया। Temporary media cleanup हो गया।':e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='photo load timeout'?'Photo 15 सेकंड में नहीं खुली। छोटी या दूसरी फ़ाइल चुनें।':e?.message==='video load timeout'?'Video 15 सेकंड में नहीं खुला। छोटी या supported format वाली फ़ाइल चुनें।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।':e?.message==='audio load failed'?'Audio file खुल नहीं सकी। फ़ाइल दोबारा चुनें।':e?.message==='audio too large'?'Mobile export के लिए audio file 30 MB से छोटी रखें।':e?.message==='audio too long'?'Mobile export के लिए audio अधिकतम 3 मिनट की होनी चाहिए।':e?.message==='empty export'?'Browser ने खाली video बनाया। Chrome में फिर कोशिश करें या कम media चुनें।':'Export विफल हुआ। Chrome में media format, memory और audio support जांचें।')}
   finally{if(audioSource){try{audioSource.stop()}catch{}}if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false)}
  };
  const nav=(id)=>setActive(id); const current=steps.find(s=>s.id===active)||steps[0];
