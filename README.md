@@ -30,7 +30,7 @@ Reference audio is a guide to broad musical attributes. Do not copy a reference 
 
 ## Current build status
 
-The React/Vite interface includes an editable lyrics workspace with a sample lyric draft, TXT lyrics export, audio upload, in-browser microphone recording and preview, a basic local browser audio cleanup pass (80 Hz high-pass filter, gentle compression and peak leveling) with WAV export, reference-track selection, editable multi-track controls, photo/video selection, and project metadata save/load in the current browser via localStorage. These are UI/local-browser features, not a complete AI music pipeline. Lyrics are a sample template, not AI-generated. Advanced AI voice enhancement/noise removal and pitch correction, reference analysis, music generation, final video rendering, and durable media bundling are not integrated. The basic cleanup runs in the browser without uploading audio; it is not AI denoising and cannot remove all background noise. Saved project metadata does not embed uploaded audio or video files, and browser storage may be cleared by the user or device.
+The React/Vite interface includes an editable lyrics workspace with a sample lyric draft, TXT lyrics export, audio upload, in-browser microphone recording and preview, a basic local browser audio cleanup pass (80 Hz high-pass filter, gentle compression and peak leveling) with WAV export, reference-track selection, editable multi-track controls, a browser-synthesized chord/beat arrangement sketch with WAV export, local image/video preview, photo/video selection, and project metadata save/load in the current browser via localStorage. These are UI/local-browser features, not a complete AI music pipeline. Lyrics are a sample template, not AI-generated. Advanced AI voice enhancement/noise removal and pitch correction, reference analysis, realistic music generation, final video timeline/rendering, and durable media bundling are not integrated. The arrangement sketch is a simple browser-generated tone/chord/beat demo controlled by tempo and enabled instrument layers; it is not a realistic backing track and does not generate singing. Video Studio can preview a selected local image or video clip, but does not combine multiple clips or render an exported music video. The basic cleanup runs in the browser without uploading audio; it is not AI denoising and cannot remove all background noise. Saved project metadata does not embed uploaded audio or video files, and browser storage may be cleared by the user or device.
 
 ## Run locally
 
@@ -65,3 +65,9 @@ No paid service is mandatory in the intended personal-use workflow. No feature s
 - Starter lyrics now vary by selected mood and support Hindi, Hinglish, and English templates; story/title are incorporated where applicable. This is rule-based template generation, not an AI model.
 - Local saved projects now retain tempo, voice tone, and track-layer toggles as well as title/story/lyrics/language/mood. Saved projects remain in this browser's local storage.
 - Voice Lab offers a basic on-device cleanup pass and WAV export; this is not advanced AI denoising or pitch correction.
+
+
+### Offline preview batch
+- Music Director can synthesize a short chord-and-beat arrangement sketch locally in the browser, play it in an audio player, and export it as WAV. This is a procedural sound sketch, not AI-generated music or real instrument/vocal stems.
+- Video Studio previews the first selected image or video clip locally. It does not yet create a multi-clip timeline, sync lyrics to beats, or export a finished MP4.
+- These features have been committed to the repository; deployment and real-device/browser compatibility must be verified separately.
