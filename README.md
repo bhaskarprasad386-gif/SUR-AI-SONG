@@ -69,5 +69,12 @@ No paid service is mandatory in the intended personal-use workflow. No feature s
 
 ### Offline preview batch
 - Music Director can synthesize a short chord-and-beat arrangement sketch locally in the browser, play it in an audio player, and export it as WAV. This is a procedural sound sketch, not AI-generated music or real instrument/vocal stems.
-- Video Studio previews the first selected image or video clip locally. It does not yet create a multi-clip timeline, sync lyrics to beats, or export a finished MP4.
+- Video Studio lets users select among locally chosen images/videos and displays a toggleable first-line lyric overlay in the preview. Style choices and selected media are UI preview controls only; there is no timed multi-clip timeline, beat sync, transition rendering, or finished MP4 export.
 - These features have been committed to the repository; deployment and real-device/browser compatibility must be verified separately.
+
+
+### Video preview controls update
+- Media list entries are selectable so users can switch the preview between chosen local images and clips.
+- The preview can show/hide the first non-empty lyric line; this is a static overlay, not time-synced karaoke captions.
+- Cinematic, Lyric video and Photo story style buttons now retain a visible selection in the UI. They do not yet render transitions or change the underlying media.
+- MP4 rendering is still not implemented; do not interpret the preview controls as a finished video export pipeline.
