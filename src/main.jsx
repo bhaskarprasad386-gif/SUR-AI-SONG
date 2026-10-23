@@ -2,6 +2,13 @@ import React, { useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AudioLines, WandSparkles, Mic2, Music2, Clapperboard, Library, Settings2, Play, Upload, Sparkles, ChevronRight, Check, FileAudio, ImagePlus, Heart, CircleHelp, Plus, X, Download, Volume2, Clock3, Layers3, AudioWaveform, ScanSearch, Film } from 'lucide-react';
 import './styles.css';
+
+// Lightweight offline app shell for mobile visits; AI processing still needs separate engines.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  });
+}
 const steps=[{id:'write',n:'01',title:'गीत लिखें',sub:'AI Songwriter',icon:WandSparkles},{id:'voice',n:'02',title:'आवाज़ स्टूडियो',sub:'Voice Lab',icon:Mic2},{id:'music',n:'03',title:'म्यूज़िक बनाएं',sub:'Music Director',icon:Music2},{id:'video',n:'04',title:'वीडियो बनाएं',sub:'Music Video',icon:Clapperboard}];
 const moods=['रोमांटिक','दर्द भरा','खुशियों वाला','सफर','भक्ति','जोश'];
 function App(){
