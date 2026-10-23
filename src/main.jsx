@@ -70,6 +70,8 @@ function App(){
  const exportPhotoSlideshow=async()=>{
   if(!photoFiles.length){notify('Export के लिए पहले photos या video clips जोड़ें।');return}
   const sequenceDuration=photoFiles.length*clipSeconds;
+  const maxExportSeconds=180;
+  if(sequenceDuration>maxExportSeconds){notify('मोबाइल की memory बचाने के लिए export अधिकतम 3 मिनट का है। Clip duration कम करें या media clips घटाएं।');return}
   const timingLines=timedLyrics.split('\n').map((line,index)=>({line:line.trim(),index:index+1})).filter(item=>item.line);
   const invalidTiming=timingLines.find(item=>{const m=item.line.match(/^(\d{1,2}):(\d{2})\s*\|\s*(.+)$/);return !m||Number(m[2])>59||Number(m[1])*60+Number(m[2])>=sequenceDuration||!m[3].trim()});
   if(invalidTiming){notify('Lyric timing line '+invalidTiming.index+' गलत है। Format MM:SS | lyric रखें और समय '+Math.floor(sequenceDuration/60)+':'+String(sequenceDuration%60).padStart(2,'0')+' से पहले रखें।');return}
@@ -89,10 +91,15 @@ function App(){
    if(videoAudioSource!=='none'){
     const AudioCtx=window.AudioContext||window.webkitAudioContext;if(!AudioCtx)throw new Error('audio context unavailable');
     audioContext=new AudioCtx();
-    const raw=audioBlob?await audioBlob.arrayBuffer():await (await fetch(audioUrl)).arrayBuffer();
+    if(audioBlob&&audioBlob.size>30*1024*1024)throw new Error('audio too large');
+    const response=audioBlob?null:await fetch(audioUrl);
+    if(response&&!response.ok)throw new Error('audio load failed');
+    const raw=audioBlob?await audioBlob.arrayBuffer():await response.arrayBuffer();
+    if(exportCancelRef.current)throw new Error('export cancelled');
     const decoded=await audioContext.decodeAudioData(raw);
     if(exportCancelRef.current)throw new Error('export cancelled');
     audioDuration=Number.isFinite(decoded.duration)?decoded.duration:0;
+    if(audioDuration>maxExportSeconds)throw new Error('audio too long');
     audioSource=audioContext.createBufferSource();const gain=audioContext.createGain(),destination=audioContext.createMediaStreamDestination();
     audioSource.buffer=decoded;audioSource.loop=videoAudioSource==='music';gain.gain.value=.85;
     audioSource.connect(gain);gain.connect(destination);
@@ -171,7 +178,7 @@ function App(){
    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
    setVideoExportProgress(100);
    notify('WebM file download शुरू किया गया। यदि डाउनलोड न दिखे तो Chrome Downloads देखें। Audio source: '+({none:'बिना audio',music:'local music preview',cleaned:'cleaned voice',voice:'uploaded voice',recording:'recorded voice'}[videoAudioSource])+'.');
-  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(e?.message==='export cancelled'?'Export रद्द कर दिया गया। Temporary media cleanup हो गया।':e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।' :e?.message==='empty export'?'Browser ने खाली video बनाया। Chrome में फिर कोशिश करें या कम media चुनें।':'Export विफल हुआ। Chrome में media format, memory और audio support जांचें।')}
+  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(e?.message==='export cancelled'?'Export रद्द कर दिया गया। Temporary media cleanup हो गया।':e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।':e?.message==='audio load failed'?'Audio file खुल नहीं सकी। फ़ाइल दोबारा चुनें।':e?.message==='audio too large'?'Mobile export के लिए audio file 30 MB से छोटी रखें।':e?.message==='audio too long'?'Mobile export के लिए audio अधिकतम 3 मिनट की होनी चाहिए।':e?.message==='empty export'?'Browser ने खाली video बनाया। Chrome में फिर कोशिश करें या कम media चुनें।':'Export विफल हुआ। Chrome में media format, memory और audio support जांचें।')}
   finally{if(audioSource){try{audioSource.stop()}catch{}}if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false)}
  };
  const nav=(id)=>setActive(id); const current=steps.find(s=>s.id===active)||steps[0];
