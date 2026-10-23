@@ -23,3 +23,10 @@
 .lyric-toggle{margin:12px 0;cursor:pointer}
 .lyric-toggle input{accent-color:#a58add;width:16px;height:16px}
 .lyric-toggle span{font-size:11px;color:#d7c6ed}
+
+/* Video studio multi-clip selection and lyric preview overlay */
+.media-item[aria-pressed="true"]{background:#292035;color:#e9dcff}
+.lyric-overlay{position:absolute;left:8%;right:8%;bottom:17px;z-index:3;padding:10px 12px;text-align:center;border-radius:8px;background:rgba(8,7,13,.78);color:#fff;font-size:clamp(12px,2.6vw,18px);font-weight:700;line-height:1.45;text-shadow:0 1px 2px #000;pointer-events:none;overflow-wrap:anywhere}
+.lyric-toggle{margin:12px 0;cursor:pointer}
+.lyric-toggle input{accent-color:#a58add;width:16px;height:16px}
+.lyric-toggle span{font-size:11px;color:#d7c6ed}
