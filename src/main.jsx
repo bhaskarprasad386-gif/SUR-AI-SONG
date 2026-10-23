@@ -161,6 +161,7 @@ function App(){
       const video=activeVideo;video.loop=true;await video.play();if(exportCancelRef.current)throw new Error('export cancelled');clipStart=performance.now();
       while(performance.now()-clipStart<currentClipSeconds*1000&&!exportCancelRef.current){
        const elapsed=(performance.now()-clipStart)/1000;
+       updateFrameProgress(elapsed);
        ctx.fillStyle='#09080d';ctx.fillRect(0,0,canvas.width,canvas.height);
        const scale=Math.max(canvas.width/(video.videoWidth||1280),canvas.height/(video.videoHeight||720)),w=(video.videoWidth||1280)*scale,h=(video.videoHeight||720)*scale;
        ctx.drawImage(video,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
