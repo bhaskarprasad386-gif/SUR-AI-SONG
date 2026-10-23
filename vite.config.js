@@ -13,7 +13,7 @@ const repairLegacyAppSource = () => ({
       lines[211] = lines[211].replace(voiceNeedle, voiceReplacement);
     }
     if (!lines[212]?.includes("active==='music'")) return null;
-    lines[212] = " {active==='music'&&<MusicDirector/>}";
+    lines[212] = "  {active==='music'&&<MusicDirector/>}";
     return { code: "import MusicDirector from './MusicDirector.jsx';\n" + lines.join('\n'), map: null };
   },
 });
