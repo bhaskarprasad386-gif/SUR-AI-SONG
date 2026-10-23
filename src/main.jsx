@@ -83,7 +83,7 @@ function App(){
   if(videoAudioSource==='voice'&&!voiceFile){notify('पहले Voice Lab में अपनी audio file upload करें, या audio source बदलें।');return}
   if(videoAudioSource==='recording'&&!recordingUrl){notify('पहले Voice Lab में recording बनाएं, या audio source बदलें।');return}
   setVideoExportProgress(0);setVideoExporting(true);exportCancelRef.current=false;
-  let stream,audioContext,recorder,audioDuration=0,audioSource;
+  let stream,audioContext,recorder,audioDuration=0,audioSource,exportDuration=sequenceDuration,lastProgressAt=0;
   try{
    const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;
    const ctx=canvas.getContext('2d');if(!ctx)throw new Error('canvas unavailable');
@@ -99,6 +99,7 @@ function App(){
     const decoded=await audioContext.decodeAudioData(raw);
     if(exportCancelRef.current)throw new Error('export cancelled');
     audioDuration=Number.isFinite(decoded.duration)?decoded.duration:0;
+    exportDuration=Math.max(sequenceDuration,audioDuration);
     if(audioDuration>maxExportSeconds)throw new Error('audio too long');
     audioSource=audioContext.createBufferSource();const gain=audioContext.createGain(),destination=audioContext.createMediaStreamDestination();
     audioSource.buffer=decoded;audioSource.loop=videoAudioSource==='music';gain.gain.value=.85;
@@ -116,6 +117,7 @@ function App(){
    const manualCaptions=timedLyrics.split('\n').map(line=>{const m=line.match(/^\s*(\d{1,2}):(\d{2})\s*\|\s*(.+)$/);return m?{at:Number(m[1])*60+Number(m[2]),text:m[3].trim()}:null}).filter(Boolean).sort((x,y)=>x.at-y.at);
    const maxWidth=canvas.width*.84,transitionSeconds=Math.min(.45,clipSeconds/4);
    let sequenceElapsed=0,completedClips=0;
+   const updateFrameProgress=elapsed=>{const now=performance.now();if(now-lastProgressAt>=300){setVideoExportProgress(Math.min(98,Math.floor(((sequenceElapsed+elapsed)/exportDuration)*98)));lastProgressAt=now}};
    const drawCaptionAndTransition=(clipElapsed,currentClipSeconds=clipSeconds)=>{
     if(showLyricOverlay&&((manualCaptions.length>0)||lyricLines.length)){
      const caption=manualCaptions.length?manualCaptions.filter(item=>item.at<=sequenceElapsed+clipElapsed).at(-1)?.text:lyricLines[Math.floor((sequenceElapsed+clipElapsed)/captionSeconds)%lyricLines.length];
@@ -147,6 +149,7 @@ function App(){
       const scale=Math.max(canvas.width/img.width,canvas.height/img.height),w=img.width*scale,h=img.height*scale;
       while(performance.now()-clipStart<currentClipSeconds*1000&&!exportCancelRef.current){
        const elapsed=(performance.now()-clipStart)/1000;
+       updateFrameProgress(elapsed);
        ctx.fillStyle='#09080d';ctx.fillRect(0,0,canvas.width,canvas.height);
        ctx.drawImage(img,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
        drawCaptionAndTransition(elapsed,currentClipSeconds);
@@ -167,7 +170,7 @@ function App(){
      }else{throw new Error('unsupported media type')}
      if(exportCancelRef.current)throw new Error('export cancelled');
     }finally{if(activeVideo){activeVideo.pause();activeVideo.removeAttribute('src');activeVideo.load()}URL.revokeObjectURL(url)}
-    sequenceElapsed+=currentClipSeconds;completedClips++;setVideoExportProgress(Math.round(completedClips/photoFiles.length*100));
+    sequenceElapsed+=currentClipSeconds;completedClips++;setVideoExportProgress(Math.min(98,Math.floor((sequenceElapsed/exportDuration)*98)));
    }
    setVideoExportProgress(99);
    recorder.stop();
