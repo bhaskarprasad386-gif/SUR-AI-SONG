@@ -59,3 +59,9 @@ npm run preview
 7. Test each end-to-end feature before marking it complete.
 
 No paid service is mandatory in the intended personal-use workflow. No feature should be labelled AI-powered until its actual model/backend is connected.
+
+
+### Latest prototype updates
+- Starter lyrics now vary by selected mood and support Hindi, Hinglish, and English templates; story/title are incorporated where applicable. This is rule-based template generation, not an AI model.
+- Local saved projects now retain tempo, voice tone, and track-layer toggles as well as title/story/lyrics/language/mood. Saved projects remain in this browser's local storage.
+- Voice Lab offers a basic on-device cleanup pass and WAV export; this is not advanced AI denoising or pitch correction.
