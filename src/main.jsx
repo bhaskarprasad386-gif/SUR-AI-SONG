@@ -91,15 +91,17 @@ function App(){
     audioContext=new AudioCtx();
     const raw=audioBlob?await audioBlob.arrayBuffer():await (await fetch(audioUrl)).arrayBuffer();
     const decoded=await audioContext.decodeAudioData(raw);
+    if(exportCancelRef.current)throw new Error('export cancelled');
     audioDuration=Number.isFinite(decoded.duration)?decoded.duration:0;
     audioSource=audioContext.createBufferSource();const gain=audioContext.createGain(),destination=audioContext.createMediaStreamDestination();
     audioSource.buffer=decoded;audioSource.loop=videoAudioSource==='music';gain.gain.value=.85;
     audioSource.connect(gain);gain.connect(destination);
     destination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
-    await audioContext.resume();audioSource.start();
+    await audioContext.resume();if(exportCancelRef.current)throw new Error('export cancelled');audioSource.start();
    }
    const mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
    if(!mime)throw new Error('webm codec unavailable');
+   if(exportCancelRef.current)throw new Error('export cancelled');
    recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2500000});const chunks=[];
    const finished=new Promise((resolve,reject)=>{recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onerror=()=>reject(new Error('recording failed'));recorder.onstop=()=>resolve(new Blob(chunks,{type:mime}))});
    recorder.start(250);
@@ -133,6 +135,7 @@ function App(){
     try{
      if(file.type.startsWith('image/')){
       const img=await new Promise((resolve,reject)=>{const el=new Image();el.onload=()=>resolve(el);el.onerror=()=>reject(new Error('photo load failed'));el.src=url});
+      if(exportCancelRef.current)throw new Error('export cancelled');
       clipStart=performance.now();
       const scale=Math.max(canvas.width/img.width,canvas.height/img.height),w=img.width*scale,h=img.height*scale;
       while(performance.now()-clipStart<currentClipSeconds*1000&&!exportCancelRef.current){
@@ -144,7 +147,8 @@ function App(){
       }
      }else if(file.type.startsWith('video/')){
       activeVideo=await new Promise((resolve,reject)=>{const el=document.createElement('video');el.preload='auto';el.muted=true;el.playsInline=true;el.onloadeddata=()=>resolve(el);el.onerror=()=>reject(new Error('video load failed'));el.src=url;el.load()});
-      const video=activeVideo;video.loop=true;await video.play();clipStart=performance.now();
+      if(exportCancelRef.current)throw new Error('export cancelled');
+      const video=activeVideo;video.loop=true;await video.play();if(exportCancelRef.current)throw new Error('export cancelled');clipStart=performance.now();
       while(performance.now()-clipStart<currentClipSeconds*1000&&!exportCancelRef.current){
        const elapsed=(performance.now()-clipStart)/1000;
        ctx.fillStyle='#09080d';ctx.fillRect(0,0,canvas.width,canvas.height);
