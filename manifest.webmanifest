@@ -1,0 +1,13 @@
+{
+  "name": "Sur AI Studio",
+  "short_name": "Sur Studio",
+  "description": "आपका निजी गीत और म्यूज़िक स्टूडियो",
+  "lang": "hi-IN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#101018",
+  "background_color": "#101018",
+  "icons": []
+}
