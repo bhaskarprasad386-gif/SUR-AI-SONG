@@ -30,7 +30,7 @@ Reference audio is a guide to broad musical attributes. Do not copy a reference 
 
 ## Current build status
 
-The React/Vite interface includes an editable lyrics workspace with a sample lyric draft, TXT lyrics export, audio upload, in-browser microphone recording and preview, reference-track selection, editable multi-track controls, photo/video selection, and project metadata save/load in the current browser via localStorage. These are UI/local-browser features, not a complete AI music pipeline. Lyrics are a sample template, not AI-generated. Voice enhancement, reference analysis, music generation, final video rendering, and durable project/media export are not integrated. Saved project metadata does not embed uploaded audio or video files, and browser storage may be cleared by the user or device.
+The React/Vite interface includes an editable lyrics workspace with a sample lyric draft, TXT lyrics export, audio upload, in-browser microphone recording and preview, a basic local browser audio cleanup pass (80 Hz high-pass filter, gentle compression and peak leveling) with WAV export, reference-track selection, editable multi-track controls, photo/video selection, and project metadata save/load in the current browser via localStorage. These are UI/local-browser features, not a complete AI music pipeline. Lyrics are a sample template, not AI-generated. Advanced AI voice enhancement/noise removal and pitch correction, reference analysis, music generation, final video rendering, and durable media bundling are not integrated. The basic cleanup runs in the browser without uploading audio; it is not AI denoising and cannot remove all background noise. Saved project metadata does not embed uploaded audio or video files, and browser storage may be cleared by the user or device.
 
 ## Run locally
 
@@ -51,7 +51,7 @@ npm run preview
 ## Implementation order
 
 1. Add robust project export/import, including clear handling of media files.
-2. Improve offline recording/import, preview, and add non-destructive audio cleanup tools.
+2. Improve offline recording/import and preview; the first basic local cleanup + WAV export is implemented, and needs device/browser testing.
 3. Add a configurable local model adapter for lyrics, with an honest fallback if no model is installed.
 4. Integrate locally runnable voice enhancement and pitch tools; clearly label any hardware/model requirements.
 5. Add original music generation/stem mixing through an open-source local engine where feasible.
