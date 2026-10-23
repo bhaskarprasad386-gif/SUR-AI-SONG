@@ -65,6 +65,10 @@ function App(){
  const selectVideoMedia=(i)=>{const file=photoFiles[i];if(!file)return;setVideoIndex(i);setVideoPreviewUrl(old=>{if(old)URL.revokeObjectURL(old);return URL.createObjectURL(file)});setVideoPreviewType(file.type.startsWith('video/')?'video':'image')};
  const exportPhotoSlideshow=async()=>{
   if(!photoFiles.length){notify('Export के लिए पहले photos या video clips जोड़ें।');return}
+  const sequenceDuration=photoFiles.length*clipSeconds;
+  const timingLines=timedLyrics.split('\n').map((line,index)=>({line:line.trim(),index:index+1})).filter(item=>item.line);
+  const invalidTiming=timingLines.find(item=>{const m=item.line.match(/^(\d{1,2}):(\d{2})\s*\|\s*(.+)$/);return !m||Number(m[2])>59||Number(m[1])*60+Number(m[2])>=sequenceDuration||!m[3].trim()});
+  if(invalidTiming){notify('Lyric timing line '+invalidTiming.index+' गलत है। Format MM:SS | lyric रखें और समय '+Math.floor(sequenceDuration/60)+':'+String(sequenceDuration%60).padStart(2,'0')+' से पहले रखें।');return}
   if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){notify('इस browser में WebM canvas export support उपलब्ध नहीं है।');return}
   const audioBlob=videoAudioSource==='music'&&musicPreviewUrl?null:videoAudioSource==='cleaned'&&processedUrl?null:videoAudioSource==='voice'&&voiceFile?voiceFile:null;
   const audioUrl=videoAudioSource==='music'?musicPreviewUrl:videoAudioSource==='cleaned'?processedUrl:videoAudioSource==='recording'?recordingUrl:'';
@@ -72,8 +76,8 @@ function App(){
   if(videoAudioSource==='cleaned'&&!processedUrl){notify('पहले Voice Lab में recording clean करें, या audio source बदलें।');return}
   if(videoAudioSource==='voice'&&!voiceFile){notify('पहले Voice Lab में अपनी audio file upload करें, या audio source बदलें।');return}
   if(videoAudioSource==='recording'&&!recordingUrl){notify('पहले Voice Lab में recording बनाएं, या audio source बदलें।');return}
-  setVideoExporting(true);
-  let stream,audioContext;
+  setVideoExportProgress(0);setVideoExporting(true);
+  let stream,audioContext,recorder;
   try{
    const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;
    const ctx=canvas.getContext('2d');if(!ctx)throw new Error('canvas unavailable');
@@ -91,7 +95,7 @@ function App(){
    }
    const mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
    if(!mime)throw new Error('webm codec unavailable');
-   const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2500000}),chunks=[];
+   recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2500000});const chunks=[];
    const finished=new Promise((resolve,reject)=>{recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onerror=()=>reject(new Error('recording failed'));recorder.onstop=()=>resolve(new Blob(chunks,{type:mime}))});
    recorder.start(250);
    const lyricLines=lyrics.split('\n').map(line=>line.trim()).filter(line=>line&&!/^\[.*\]$/.test(line));
@@ -152,8 +156,8 @@ function App(){
    a.href=url;a.download=(title||'sur-photo-story').replace(/[^\p{L}\p{N}-]+/gu,'-')+'.webm';
    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
    notify('WebM export तैयार: timed lyrics और fade transitions शामिल हैं। Audio source: '+({none:'बिना audio',music:'local music preview',cleaned:'cleaned voice',voice:'uploaded voice',recording:'recorded voice'}[videoAudioSource])+'.');
-  }catch(e){notify('Export नहीं हो सका। Browser audio/codec support जांचें या कम photos चुनें।')}
-  finally{if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false);setVideoExportProgress(0)}
+  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।':'Export नहीं हो सका। Browser audio/codec support जांचें या कम photos चुनें।')}
+  finally{if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false)}
  };
  const nav=(id)=>setActive(id); const current=steps.find(s=>s.id===active)||steps[0];
  return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark"><AudioLines size={23}/></div><div><strong>Sur AI <span>Studio</span></strong><small>YOUR PERSONAL MUSIC SPACE</small></div></div><button className="new-project" onClick={()=>{setTitle('नया गाना');setLyrics('');setStory('');setActive('write');notify('नया प्रोजेक्ट शुरू हुआ')}}><Plus size={17}/> नया प्रोजेक्ट</button><div className="nav-label">CREATE YOUR SONG</div><nav>{steps.map(s=><button key={s.id} onClick={()=>nav(s.id)} className={'nav-item '+(active===s.id?'selected':'')}><span className="nav-icon"><s.icon size={18}/></span><span className="nav-copy"><b>{s.title}</b><small>{s.sub}</small></span>{active===s.id&&<ChevronRight size={16}/>}</button>)}</nav><div className="nav-label library-label">YOUR WORKSPACE</div><button className="nav-item" onClick={()=>setShowProjects(v=>!v)}><span className="nav-icon"><Library size={18}/></span><span className="nav-copy"><b>मेरे प्रोजेक्ट</b><small>Saved creations</small></span></button><div className="sidebar-bottom"><div className="tip-card"><Sparkles size={18}/><b>आपकी आवाज़, आपका संगीत</b><p>अपने विचारों को एक पूरे गाने और वीडियो में बदलें।</p></div><button className="nav-item" onClick={()=>notify('सेटिंग्स जल्द उपलब्ध होंगी।')}><span className="nav-icon"><Settings2 size={18}/></span><span className="nav-copy"><b>सेटिंग्स</b></span></button><div className="profile"><div className="avatar">S</div><div><b>My Studio</b><small>Personal workspace</small></div><CircleHelp size={17}/></div></div></aside>
