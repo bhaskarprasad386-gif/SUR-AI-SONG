@@ -111,7 +111,7 @@ function App(){
    if(!mime)throw new Error('webm codec unavailable');
    if(exportCancelRef.current)throw new Error('export cancelled');
    recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2500000});const chunks=[];
-   const finished=new Promise((resolve,reject)=>{recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onerror=()=>reject(new Error('recording failed'));recorder.onstop=()=>resolve(new Blob(chunks,{type:mime}))});
+   const finished=new Promise((resolve,reject)=>{let settled=false;const finish=(fn,value)=>{if(settled)return;settled=true;fn(value)};recorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};recorder.onerror=()=>finish(reject,new Error('recording failed'));recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});finish(blob.size?resolve:reject,blob.size?blob:new Error('empty export'))}});
    recorder.start(250);
    const lyricLines=lyrics.split('\n').map(line=>line.trim()).filter(line=>line&&!/^\[.*\]$/.test(line));
    const manualCaptions=timedLyrics.split('\n').map(line=>{const m=line.match(/^\s*(\d{1,2}):(\d{2})\s*\|\s*(.+)$/);return m?{at:Number(m[1])*60+Number(m[2]),text:m[3].trim()}:null}).filter(Boolean).sort((x,y)=>x.at-y.at);
@@ -175,14 +175,14 @@ function App(){
    }
    setVideoExportProgress(99);
    recorder.stop();
-   const blob=await finished;
+   let stopTimer;const blob=await Promise.race([finished,new Promise((_,reject)=>{stopTimer=setTimeout(()=>reject(new Error('recorder stop timeout')),8000)})]).finally(()=>clearTimeout(stopTimer));
    if(!blob.size)throw new Error('empty export');
    const url=URL.createObjectURL(blob),a=document.createElement('a');
    a.href=url;a.download=(title||'sur-photo-story').replace(/[^\p{L}\p{N}-]+/gu,'-')+'.webm';
    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
    setVideoExportProgress(100);
    notify('WebM file download शुरू किया गया। यदि डाउनलोड न दिखे तो Chrome Downloads देखें। Audio source: '+({none:'बिना audio',music:'local music preview',cleaned:'cleaned voice',voice:'uploaded voice',recording:'recorded voice'}[videoAudioSource])+'.');
-  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(exportCancelRef.current||e?.message==='export cancelled'?'Export रद्द कर दिया गया। Temporary media cleanup हो गया।':e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='photo load timeout'?'Photo 15 सेकंड में नहीं खुली। छोटी या दूसरी फ़ाइल चुनें।':e?.message==='video load timeout'?'Video 15 सेकंड में नहीं खुला। छोटी या supported format वाली फ़ाइल चुनें।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।':e?.message==='audio load failed'?'Audio file खुल नहीं सकी। फ़ाइल दोबारा चुनें।':e?.message==='audio too large'?'Mobile export के लिए audio file 30 MB से छोटी रखें।':e?.message==='audio too long'?'Mobile export के लिए audio अधिकतम 3 मिनट की होनी चाहिए।':e?.message==='empty export'?'Browser ने खाली video बनाया। Chrome में फिर कोशिश करें या कम media चुनें।':'Export विफल हुआ। Chrome में media format, memory और audio support जांचें।')}
+  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(exportCancelRef.current||e?.message==='export cancelled'?'Export रद्द कर दिया गया। Temporary media cleanup हो गया।':e?.message==='recording failed'?'Browser recorder में error आया। दोबारा export करें।':e?.message==='recorder stop timeout'?'Video recorder समय पर बंद नहीं हुआ। छोटी timeline के साथ दोबारा कोशिश करें।':e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='photo load timeout'?'Photo 15 सेकंड में नहीं खुली। छोटी या दूसरी फ़ाइल चुनें।':e?.message==='video load timeout'?'Video 15 सेकंड में नहीं खुला। छोटी या supported format वाली फ़ाइल चुनें।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।':e?.message==='audio load failed'?'Audio file खुल नहीं सकी। फ़ाइल दोबारा चुनें।':e?.message==='audio too large'?'Mobile export के लिए audio file 30 MB से छोटी रखें।':e?.message==='audio too long'?'Mobile export के लिए audio अधिकतम 3 मिनट की होनी चाहिए।':e?.message==='empty export'?'Browser ने खाली video बनाया। Chrome में फिर कोशिश करें या कम media चुनें।':'Export विफल हुआ। Chrome में media format, memory और audio support जांचें।')}
   finally{if(exportAbortControllerRef.current){exportAbortControllerRef.current.abort();exportAbortControllerRef.current=null}if(audioSource){try{audioSource.stop()}catch{}}if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false)}
  };
  const nav=(id)=>setActive(id); const current=steps.find(s=>s.id===active)||steps[0];
