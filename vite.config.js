@@ -9,11 +9,11 @@ const repairLegacyAppSource = () => ({
     const lines = code.split('\n');
     const voiceNeedle = "onChange={e=>setFile(e,f=>{replaceProcessedUrl('');replaceRecordingUrl('');setVoiceFile(f)})}";
     const voiceReplacement = 'onChange={e=>setFile(e,setVoiceFile)}';
-    if (lines[210]?.includes("active==='voice'")) {
-      lines[210] = lines[210].replace(voiceNeedle, voiceReplacement);
+    if (lines[211]?.includes("active==='voice'")) {
+      lines[211] = lines[211].replace(voiceNeedle, voiceReplacement);
     }
-    if (!lines[211]?.includes("active==='music'")) return null;
-    lines[211] = " {active==='music'&&<MusicDirector/>}";
+    if (!lines[212]?.includes("active==='music'")) return null;
+    lines[212] = " {active==='music'&&<MusicDirector/>}";
     return { code: "import MusicDirector from './MusicDirector.jsx';\n" + lines.join('\n'), map: null };
   },
 });
