@@ -30,7 +30,7 @@ Reference audio is a guide to broad musical attributes. Do not copy a reference 
 
 ## Current build status
 
-The initial React/Vite interface includes a lyrics draft workspace, audio file selection, reference-track selection, editable multi-track layer controls and photo/video selection. Lyrics are currently a demo template, not connected AI generation. Voice processing, reference analysis, music generation, persistence and final video rendering are not yet integrated.
+The React/Vite interface includes an editable lyrics workspace with a sample lyric draft, TXT lyrics export, audio upload, in-browser microphone recording and preview, reference-track selection, editable multi-track controls, photo/video selection, and project metadata save/load in the current browser via localStorage. These are UI/local-browser features, not a complete AI music pipeline. Lyrics are a sample template, not AI-generated. Voice enhancement, reference analysis, music generation, final video rendering, and durable project/media export are not integrated. Saved project metadata does not embed uploaded audio or video files, and browser storage may be cleared by the user or device.
 
 ## Run locally
 
@@ -50,8 +50,8 @@ npm run preview
 
 ## Implementation order
 
-1. Keep the frontend buildable and add local project save/load.
-2. Implement offline recording/import, preview, and non-destructive audio cleanup tools.
+1. Add robust project export/import, including clear handling of media files.
+2. Improve offline recording/import, preview, and add non-destructive audio cleanup tools.
 3. Add a configurable local model adapter for lyrics, with an honest fallback if no model is installed.
 4. Integrate locally runnable voice enhancement and pitch tools; clearly label any hardware/model requirements.
 5. Add original music generation/stem mixing through an open-source local engine where feasible.
