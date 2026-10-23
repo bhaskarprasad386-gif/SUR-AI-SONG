@@ -151,12 +151,16 @@ function App(){
     }finally{URL.revokeObjectURL(url)}
     sequenceElapsed+=clipSeconds;completedClips++;setVideoExportProgress(Math.round(completedClips/photoFiles.length*100));
    }
+   setVideoExportProgress(99);
    recorder.stop();
-   const blob=await finished,url=URL.createObjectURL(blob),a=document.createElement('a');
+   const blob=await finished;
+   if(!blob.size)throw new Error('empty export');
+   const url=URL.createObjectURL(blob),a=document.createElement('a');
    a.href=url;a.download=(title||'sur-photo-story').replace(/[^\p{L}\p{N}-]+/gu,'-')+'.webm';
    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-   notify('WebM export तैयार: timed lyrics और fade transitions शामिल हैं। Audio source: '+({none:'बिना audio',music:'local music preview',cleaned:'cleaned voice',voice:'uploaded voice',recording:'recorded voice'}[videoAudioSource])+'.');
-  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।':'Export नहीं हो सका। Browser audio/codec support जांचें या कम photos चुनें।')}
+   setVideoExportProgress(100);
+   notify('WebM file download शुरू किया गया। यदि डाउनलोड न दिखे तो Chrome Downloads देखें। Audio source: '+({none:'बिना audio',music:'local music preview',cleaned:'cleaned voice',voice:'uploaded voice',recording:'recorded voice'}[videoAudioSource])+'.');
+  }catch(e){if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch{}}setVideoExportProgress(0);notify(e?.message==='photo load failed'?'एक photo खुल नहीं सकी। उस फ़ाइल को दोबारा चुनें या हटाएं।':e?.message==='video load failed'?'एक video clip खुल नहीं सकी। फ़ाइल का format जांचें।' :e?.message==='empty export'?'Browser ने खाली video बनाया। Chrome में फिर कोशिश करें या कम media चुनें।':'Export विफल हुआ। Chrome में media format, memory और audio support जांचें।')}
   finally{if(stream)stream.getTracks().forEach(t=>t.stop());if(audioContext)audioContext.close().catch(()=>{});setVideoExporting(false)}
  };
  const nav=(id)=>setActive(id); const current=steps.find(s=>s.id===active)||steps[0];
