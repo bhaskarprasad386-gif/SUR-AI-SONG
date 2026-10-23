@@ -145,7 +145,7 @@ function App(){
       video.pause();video.removeAttribute('src');video.load();
      }else{throw new Error('unsupported media type')}
     }finally{URL.revokeObjectURL(url)}
-    sequenceElapsed+=clipSeconds;
+    sequenceElapsed+=clipSeconds;completedClips++;setVideoExportProgress(Math.round(completedClips/photoFiles.length*100));
    }
    recorder.stop();
    const blob=await finished,url=URL.createObjectURL(blob),a=document.createElement('a');
