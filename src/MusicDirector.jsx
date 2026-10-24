@@ -40,8 +40,74 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
  const [musicModel,setMusicModel]=useState('lyria-3.5'),[targetSongLength,setTargetSongLength]=useState('3'),[musicVocalMode,setMusicVocalMode]=useState('vocals'),[musicPrompt,setMusicPrompt]=useState('Warm emotional Bollywood romantic song, expressive male lead vocal, soft piano, acoustic guitar, lush strings, gentle tabla, memorable chorus, polished studio mix'),[useLyricsInMusic,setUseLyricsInMusic]=useState(true),[allowPaidMusic,setAllowPaidMusic]=useState(false),[musicBusy,setMusicBusy]=useState(false),[musicStatus,setMusicStatus]=useState(''),[generatedMusicUrl,setGeneratedMusicUrl]=useState(''),[generatedMusicMime,setGeneratedMusicMime]=useState('audio/mpeg');
  const [aiTopic,setAiTopic]=useState('बिछड़ने के बाद भी सच्चा प्यार'),[aiEmotion,setAiEmotion]=useState('दर्द भरा, भावुक'),[aiSpecialLine,setAiSpecialLine]=useState(''),[aiLanguage,setAiLanguage]=useState('Hindi'),[aiStyle,setAiStyle]=useState('Bollywood romantic ballad'),[aiBusy,setAiBusy]=useState(false),[aiStatus,setAiStatus]=useState('');
  const [aiService,setAiService]=useState('boppy');
+ const [aceEndpoint,setAceEndpoint]=useState(()=>{try{return localStorage.getItem('sur-ai-studio-acestep-endpoint-v1')||''}catch{return ''}});
+ const [aceApiKey,setAceApiKey]=useState('');
+ const [aceStatus,setAceStatus]=useState('');
+ const [aceBusy,setAceBusy]=useState(false);
+ const [aceConnection,setAceConnection]=useState('unknown');
  const [aiSingerMode,setAiSingerMode]=useState('मेरी अपनी आवाज़'),[aiBackingVocals,setAiBackingVocals]=useState(true),[aiDuration,setAiDuration]=useState('3 मिनट'),[aiInstrumentPlan,setAiInstrumentPlan]=useState('Soft piano, acoustic guitar, lush strings, gentle tabla, warm bass, light percussion');
 
+ const aceBase=()=>{const value=aceEndpoint.trim().replace(/\\/+$/,'');if(!value)throw new Error('पहले अपने ACE-Step API server का HTTPS URL डालें।');let parsed;try{parsed=new URL(value)}catch{throw new Error('API URL सही नहीं है। पूरा https:// URL डालें।')}if(!['https:','http:'].includes(parsed.protocol))throw new Error('API URL http या https होना चाहिए।');return value};
+ const aceRequest=async(path,body)=>{
+  const base=aceBase();
+  const headers={'Content-Type':'application/json'};
+  if(aceApiKey.trim())headers.Authorization='Bearer '+aceApiKey.trim();
+  const response=await fetch(base+path,{method:body?'POST':'GET',headers,...(body?{body:JSON.stringify(body)}:{})});
+  let json;try{json=await response.json()}catch{throw new Error('ACE-Step server ने JSON response नहीं दिया। URL, API और CORS सेटिंग जाँचें।')}
+  if(!response.ok||json?.error)throw new Error(json?.error||json?.detail||('ACE-Step API error '+response.status));
+  if(json?.code&&json.code!==200)throw new Error(json.error||('ACE-Step API code '+json.code));
+  return json?.data??json;
+ };
+ const testAceConnection=async()=>{
+  setAceStatus('ACE-Step server जाँचा जा रहा है…');setAceConnection('checking');
+  try{const data=await aceRequest('/health');setAceConnection('connected');setAceStatus('ACE-Step API reachable है। '+(data?.service||data?.status||'Health check सफल')+' — अभी वास्तविक generation test नहीं हुआ।');try{localStorage.setItem('sur-ai-studio-acestep-endpoint-v1',aceBase())}catch{}}
+  catch(e){setAceConnection('error');setAceStatus('कनेक्शन नहीं हुआ: '+(e?.message||'Unknown error')+' Public server पर CORS/API access भी सक्षम होना चाहिए।');}
+ };
+ const generateWithAceStep=async()=>{
+  if(!(lyrics||'').trim()){setAceStatus('पहले अपने lyrics लिखें या paste करें।');return}
+  if((lyrics||'').trim().length>4096){setAceStatus('ACE-Step API के लिए lyrics 4096 characters से छोटे रखें; पहले lyrics छोटा करें।');return}
+  setAceBusy(true);setGeneratedMusicUrl('');setAceStatus('ACE-Step में आपके custom lyrics के साथ vocal song task भेज रहे हैं…');
+  try{
+   const durationMinutes=Number.parseInt(aiDuration,10)||3;
+   const task=await aceRequest('/release_task',{
+    prompt:[aiStyle,aiEmotion,mood,aiInstrumentPlan,aiBackingVocals?'supportive background harmonies and chorus':'lead vocal only','clear Hindi pronunciation, full sung song, not instrumental'].filter(Boolean).join(', '),
+    lyrics:(lyrics||'').trim(),vocal_language:/hindi|हिंदी/i.test(aiLanguage)?'hi':/english/i.test(aiLanguage)?'en':'unknown',
+    instrumental:false,bpm:tempo,audio_duration:Math.max(10,Math.min(600,durationMinutes*60)),audio_format:'mp3',
+    thinking:true,inference_steps:8,batch_size:1
+   });
+   const taskId=task?.task_id||task?.taskId;
+   if(!taskId)throw new Error('API ने task ID नहीं लौटाई; audio generation शुरू नहीं मानी गई।');
+   setAceStatus('गाना जनरेट हो रहा है… task '+taskId+'। समय लग सकता है; पेज खुला रखें।');
+   let finished=null;
+   for(let attempt=0;attempt<120;attempt++){
+    await new Promise(resolve=>setTimeout(resolve,5000));
+    const response=await aceRequest('/query_result',{task_id_list:[taskId]});
+    const items=Array.isArray(response)?response:(response?.results||response?.data||[]);
+    const item=items.find?.(x=>String(x.task_id||x.taskId)===String(taskId))||items[0];
+    if(!item)continue;
+    const status=Number(item.status);
+    if(status===2)throw new Error(item.error||item.message||'ACE-Step generation failed.');
+    if(status===1){finished=item;break}
+    setAceStatus('गाना जनरेट हो रहा है… '+Math.round((attempt+1)/120*100)+'% polling progress (यह समय का अनुमान है, model progress नहीं)।');
+   }
+   if(!finished)throw new Error('10 मिनट में generation पूरी नहीं हुई। Server busy हो सकता है; बाद में दोबारा कोशिश करें।');
+   let result=finished.result;
+   if(typeof result==='string'){try{result=JSON.parse(result)}catch{result=[]}}
+   const first=Array.isArray(result)?result[0]:result;
+   const file=first?.file||first?.audio_url||first?.url;
+   if(!file)throw new Error('Task complete हुआ, लेकिन API ने audio file URL नहीं लौटाया। कोई audio तैयार होने की पुष्टि नहीं हुई।');
+   const base=aceBase();
+   const audioUrl=/^https?:\\/\\//i.test(file)?file:new URL(file,base+'/').toString();
+   const audioResponse=await fetch(audioUrl,{headers:aceApiKey.trim()?{Authorization:'Bearer '+aceApiKey.trim()}:{}});
+   if(!audioResponse.ok)throw new Error('Audio download विफल: HTTP '+audioResponse.status);
+   const blob=await audioResponse.blob();
+   if(!blob.size)throw new Error('API से खाली audio file मिली।');
+   const localUrl=URL.createObjectURL(blob);setGeneratedMusicUrl(localUrl);setGeneratedMusicMime(blob.type||'audio/mpeg');
+   setAceConnection('connected');setAceStatus('वास्तविक audio file प्राप्त हुई ('+(blob.size/1024/1024).toFixed(2)+' MB)। नीचे सुनें या डाउनलोड करें।');
+   try{localStorage.setItem('sur-ai-studio-acestep-endpoint-v1',base)}catch{}
+  }catch(e){setAceStatus('गाना नहीं बन पाया: '+(e?.message||'Unknown error')+' यह failure है—कोई fake success नहीं दिखाया गया।');}
+  finally{setAceBusy(false)}
+ };
  const downloadBlob=(blob,name)=>{const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)};
  const buildFinalSongPrompt=()=>[
   'Create an original complete song. Do not copy an existing recording or melody.',
