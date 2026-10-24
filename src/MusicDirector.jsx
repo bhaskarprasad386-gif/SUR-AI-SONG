@@ -65,7 +65,7 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
   '',
   'LYRICS:',
   (lyrics||'').trim()
- ].join('\\n');
+ ].join('\n');
  const copyPromptText=async textOut=>{
   try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(textOut);return true}}catch{}
   let field;
