@@ -44,28 +44,33 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
 
  const downloadBlob=(blob,name)=>{const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)};
  const buildFinalSongPrompt=()=>[
-  'Create an original complete song. Do not copy an existing recording or melody.',
+  'TASK: Generate a COMPLETE SUNG SONG using the exact custom lyrics below, not an instrumental-only track.',
+  'LYRICS ARE THE SOURCE OF TRUTH. Sing every supplied lyric line in its original order and language. Do not rewrite, translate, summarize, skip, repeat, or invent lyric lines. Do not substitute placeholder lyrics. Keep section labels such as [मुखड़ा], [अंतरा], [कोरस], [Verse], [Chorus], or [Bridge] as arrangement cues; do not sing the labels aloud.',
+  'Map the supplied lines to a singable melody. The vocal performance must follow the lyrics from beginning to end. If the service cannot follow custom lyrics or generate vocals, do not silently return an instrumental and do not claim the requested vocal song was made.',
+  'Create an original melody and arrangement; do not copy an existing recording or melody.',
   'Title: '+(title||'New song'),
-  'Language: '+aiLanguage,
+  'Lyrics language (sing in this language): '+aiLanguage,
   'Genre/style: '+aiStyle,
   'Song emotion: '+aiEmotion,
   'Arrangement mood: '+mood,
   'Target duration: '+aiDuration,
   'Vocal mode: '+aiSingerMode,
-  'Backing vocals/harmonies/chorus: '+(aiBackingVocals?'yes, layered harmonies and chorus':'no, lead vocal only'),
+  'Backing vocals/harmonies/chorus: '+(aiBackingVocals?'yes, add supportive layered harmonies and chorus without obscuring the lead lyric':'no, lead vocal only'),
   'Arrangement/instrument plan: '+aiInstrumentPlan,
-  'Tempo target: '+tempo+' BPM',
+  'Tempo target: '+tempo+' BPM; adjust naturally to fit lyric phrasing.',
   'Reference style: '+referenceMood,
   'Reference emotion: '+referenceEmotion,
   'Requested reference instruments: '+(referenceInstruments.length?referenceInstruments.join(', '):'none'),
   'Reference notes: '+(referenceNotes.trim()||'none'),
   'Track states and volumes: '+layers.map(x=>x.name+' ('+(x.on?'ON':'OFF')+', '+(x.volume??100)+'%)').join(', '),
   'Master volume target: '+masterVolume+'%; reverb target: '+reverbAmount+'%',
-  'Instructions: preserve the supplied lyrics exactly; create an original melody, clear verse/chorus structure, musical intro and outro, and a balanced vocal/music mix. Use only my own or explicitly authorized voice sample if the selected service supports it. The settings are creative instructions; external services may not honor every control exactly.',
+  'Mix instructions: clear intelligible lead vocal, natural pronunciation, vocal melody aligned to syllables, musical intro/outro, balanced accompaniment, and a memorable chorus only if supported by the supplied lyrics. Do not add words to fill duration. Use only my own or explicitly authorized voice sample if the selected service supports it.',
+  'Important limitation: these settings and lyric-following instructions are requests to the external provider, not proof it supports custom-lyric singing or every setting. Verify its actual output before treating the song as complete.',
   '',
-  'LYRICS:',
-  (lyrics||'').trim()
- ].join('\n');
+  'BEGIN EXACT CUSTOM LYRICS',
+  (lyrics||'').trim(),
+  'END EXACT CUSTOM LYRICS'
+ ].join('\\n');
  const copyPromptText=async textOut=>{
   try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(textOut);return true}}catch{}
   let field;
