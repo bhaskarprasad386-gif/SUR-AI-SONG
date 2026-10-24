@@ -72,13 +72,47 @@ function App(){
   finally{clearTimeout(timeout);setLyricsGenerating(false)}
  };
  const makeMusicPreview=async()=>{
-  if(!layers.some(l=>l.on&&l.kind!=='Voice')){notify('पहले कम-से-कम एक instrument/atmosphere track चालू करें।');return}
-  setMusicGenerating(true);try{const bpm=Math.max(55,Math.min(160,tempo)),sampleRate=22050,beats=32,duration=beats*60/bpm;const offline=new OfflineAudioContext(2,Math.ceil(duration*sampleRate),sampleRate);const instruments=layers.filter(l=>l.on&&l.kind!=='Voice');const hasPad=instruments.length>0;const hasGuitar=instruments.some(l=>/guitar/i.test(l.name));const chords=[[261.63,329.63,392],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]];
-  const addTone=(freq,start,len,volume,type='sine')=>{const osc=offline.createOscillator(),gain=offline.createGain(),filter=offline.createBiquadFilter();osc.type=type;osc.frequency.setValueAtTime(freq,start);filter.type='lowpass';filter.frequency.value=type==='triangle'?1800:1100;gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(Math.max(.0002,volume),start+.025);gain.gain.setValueAtTime(Math.max(.0002,volume),Math.max(start+.03,start+len-.12));gain.gain.exponentialRampToValueAtTime(.0001,start+len);osc.connect(filter);filter.connect(gain);gain.connect(offline.destination);osc.start(start);osc.stop(start+len+.01)};
-  if(hasPad){for(let beat=0;beat<beats;beat+=4){const chord=chords[(beat/4)%chords.length],start=beat*60/bpm,len=4*60/bpm;chord.forEach(freq=>addTone(freq,start,len,.045,'sine'));if(hasGuitar){for(let n=0;n<8;n++)addTone(chord[n%3]*2,start+n*len/8,len/10,.022,'triangle')}}}
-  for(let beat=0;beat<beats;beat++){const start=beat*60/bpm;addTone(beat%4===0?110:beat%2===0?82:65,start,.075,beat%4===0?.075:.035,'sine');if(beat%2===0)addTone(1200,start,.025,.018,'triangle')}
-  const rendered=await offline.startRendering(),url=URL.createObjectURL(audioBufferToWav(rendered));setMusicPreviewUrl(url);notify('Local arrangement sketch तैयार है। यह synthesized demo है—AI-generated instruments या vocals नहीं।');
-  }catch(e){notify('Preview नहीं बन सका। इस browser में Web Audio support जांचें।')}finally{setMusicGenerating(false)}};
+  const instruments=layers.filter(l=>l.on&&l.kind!=='Voice');
+  if(!instruments.length){notify('पहले कम-से-कम एक instrument/atmosphere track चालू करें।');return}
+  setMusicGenerating(true);
+  try{
+   const bpm=Math.max(55,Math.min(160,tempo)),sampleRate=22050,beats=64,duration=beats*60/bpm;
+   const offline=new OfflineAudioContext(2,Math.ceil(duration*sampleRate),sampleRate);
+   const enabled=name=>instruments.some(l=>l.name.toLowerCase().includes(name));
+   const progressions={
+    'Romantic Bollywood':[[261.63,329.63,392],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]],
+    'Acoustic ballad':[[196,246.94,293.66],[164.81,196,246.94],[130.81,164.81,196],[146.83,196,220]],
+    'Indie pop':[[220,277.18,329.63],[174.61,220,261.63],[261.63,329.63,392],[196,246.94,293.66]],
+    'Cinematic orchestral':[[146.83,220,293.66],[130.81,196,261.63],[174.61,261.63,349.23],[196,293.66,392]],
+    'Folk fusion':[[196,246.94,293.66],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]],
+    'Devotional':[[261.63,349.23,392],[293.66,392,440],[220,293.66,329.63],[261.63,349.23,392]]
+   };
+   const chords=progressions[musicMood]||progressions['Romantic Bollywood'];
+   const addTone=(freq,start,len,volume,type='sine')=>{
+    const osc=offline.createOscillator(),gain=offline.createGain(),filter=offline.createBiquadFilter();
+    osc.type=type;osc.frequency.setValueAtTime(freq,start);filter.type='lowpass';filter.frequency.value=type==='triangle'?2200:type==='sawtooth'?900:1400;
+    gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(Math.max(.0002,volume),start+.018);gain.gain.setValueAtTime(Math.max(.0002,volume),Math.max(start+.025,start+len-.07));gain.gain.exponentialRampToValueAtTime(.0001,start+len);
+    osc.connect(filter);filter.connect(gain);gain.connect(offline.destination);osc.start(start);osc.stop(start+len+.01)
+   };
+   for(let beat=0;beat<beats;beat+=4){
+    const chord=chords[(beat/4)%chords.length],start=beat*60/bpm,len=4*60/bpm;
+    if(enabled('piano'))chord.forEach(freq=>addTone(freq,start,len*.94,.038,'sine'));
+    if(enabled('guitar'))for(let n=0;n<8;n++)addTone(chord[n%chord.length]*2,start+n*len/8,len/10,.024,'triangle');
+    if(enabled('strings')||enabled('pads'))chord.forEach(freq=>addTone(freq/2,start,len,.018,'sawtooth'));
+    if(enabled('bass'))addTone(chord[0]/2,start,len*.9,.055,'sine');
+   }
+   if(enabled('percussion'))for(let beat=0;beat<beats;beat++){
+    const start=beat*60/bpm;
+    if(beat%4===0)addTone(95,start,.11,.075,'sine');
+    else if(beat%2===0)addTone(145,start,.06,.026,'triangle');
+    if(beat%2===0)addTone(1250,start,.025,.012,'triangle');
+   }
+   const rendered=await offline.startRendering(),url=URL.createObjectURL(audioBufferToWav(rendered));
+   setMusicPreviewUrl(old=>{if(old)URL.revokeObjectURL(old);return url});
+   notify('64-beat local arrangement sketch तैयार है। Mood और चालू instrument layers sound को बदलते हैं; यह अभी भी AI music या vocals नहीं है।');
+  }catch(e){notify('Preview नहीं बन सका। Browser audio support या उपलब्ध memory जाँचें।')}
+  finally{setMusicGenerating(false)}
+ };
  const downloadMusicPreview=()=>{if(!musicPreviewUrl)return;const a=document.createElement('a');a.href=musicPreviewUrl;a.download='sur-arrangement-sketch.wav';document.body.appendChild(a);a.click();a.remove();notify('Arrangement sketch WAV export शुरू हुआ।')};
  const toggleLayer=(i)=>setLayers(a=>a.map((l,j)=>j===i?{...l,on:!l.on}:l));
  const replaceProcessedUrl=(next)=>{const value=next||'',previous=processedUrlRef.current;if(previous&&previous!==value)URL.revokeObjectURL(previous);processedUrlRef.current=value;setProcessedUrl(value)};
