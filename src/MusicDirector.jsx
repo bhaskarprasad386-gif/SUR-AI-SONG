@@ -40,19 +40,87 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
  const [musicModel,setMusicModel]=useState('lyria-3.5'),[targetSongLength,setTargetSongLength]=useState('3'),[musicVocalMode,setMusicVocalMode]=useState('vocals'),[musicPrompt,setMusicPrompt]=useState('Warm emotional Bollywood romantic song, expressive male lead vocal, soft piano, acoustic guitar, lush strings, gentle tabla, memorable chorus, polished studio mix'),[useLyricsInMusic,setUseLyricsInMusic]=useState(true),[allowPaidMusic,setAllowPaidMusic]=useState(false),[musicBusy,setMusicBusy]=useState(false),[musicStatus,setMusicStatus]=useState(''),[generatedMusicUrl,setGeneratedMusicUrl]=useState(''),[generatedMusicMime,setGeneratedMusicMime]=useState('audio/mpeg');
  const [aiTopic,setAiTopic]=useState('बिछड़ने के बाद भी सच्चा प्यार'),[aiEmotion,setAiEmotion]=useState('दर्द भरा, भावुक'),[aiSpecialLine,setAiSpecialLine]=useState(''),[aiLanguage,setAiLanguage]=useState('Hindi'),[aiStyle,setAiStyle]=useState('Bollywood romantic ballad'),[aiBusy,setAiBusy]=useState(false),[aiStatus,setAiStatus]=useState('');
  const [aiService,setAiService]=useState('boppy');
+ const [aceEndpoint,setAceEndpoint]=useState(()=>{try{return localStorage.getItem('sur-ai-studio-acestep-endpoint-v1')||''}catch{return ''}});
+ const [aceApiKey,setAceApiKey]=useState('');
+ const [aceStatus,setAceStatus]=useState('');
+ const [aceBusy,setAceBusy]=useState(false);
+ const [aceConnection,setAceConnection]=useState('unknown');
  const [aiSingerMode,setAiSingerMode]=useState('मेरी अपनी आवाज़'),[aiBackingVocals,setAiBackingVocals]=useState(true),[aiDuration,setAiDuration]=useState('3 मिनट'),[aiInstrumentPlan,setAiInstrumentPlan]=useState('Soft piano, acoustic guitar, lush strings, gentle tabla, warm bass, light percussion');
 
+ const aceBase=()=>{let value=aceEndpoint.trim();while(value.endsWith('/'))value=value.slice(0,-1);if(!value)throw new Error('पहले अपने ACE-Step API server का HTTPS URL डालें।');let parsed;try{parsed=new URL(value)}catch{throw new Error('API URL सही नहीं है। पूरा https:// URL डालें।')}if(!['https:','http:'].includes(parsed.protocol))throw new Error('API URL http या https होना चाहिए।');return value};
+ const aceRequest=async(path,body)=>{
+  const base=aceBase();
+  const headers={'Content-Type':'application/json'};
+  if(aceApiKey.trim())headers.Authorization='Bearer '+aceApiKey.trim();
+  const response=await fetch(base+path,{method:body?'POST':'GET',headers,...(body?{body:JSON.stringify(body)}:{})});
+  let json;try{json=await response.json()}catch{throw new Error('ACE-Step server ने JSON response नहीं दिया। URL, API और CORS सेटिंग जाँचें।')}
+  if(!response.ok||json?.error)throw new Error(json?.error||json?.detail||('ACE-Step API error '+response.status));
+  if(json?.code&&json.code!==200)throw new Error(json.error||('ACE-Step API code '+json.code));
+  return json?.data??json;
+ };
+ const testAceConnection=async()=>{
+  setAceStatus('ACE-Step server जाँचा जा रहा है…');setAceConnection('checking');
+  try{const data=await aceRequest('/health');setAceConnection('connected');setAceStatus('ACE-Step API reachable है। '+(data?.service||data?.status||'Health check सफल')+' — अभी वास्तविक generation test नहीं हुआ।');try{localStorage.setItem('sur-ai-studio-acestep-endpoint-v1',aceBase())}catch{}}
+  catch(e){setAceConnection('error');setAceStatus('कनेक्शन नहीं हुआ: '+(e?.message||'Unknown error')+' Public server पर CORS/API access भी सक्षम होना चाहिए।');}
+ };
+ const generateWithAceStep=async()=>{
+  if(!(lyrics||'').trim()){setAceStatus('पहले अपने lyrics लिखें या paste करें।');return}
+  if((lyrics||'').trim().length>4096){setAceStatus('ACE-Step API के लिए lyrics 4096 characters से छोटे रखें; पहले lyrics छोटा करें।');return}
+  setAceBusy(true);setGeneratedMusicUrl('');setAceStatus('ACE-Step में आपके custom lyrics के साथ vocal song task भेज रहे हैं…');
+  try{
+   const durationMinutes=Number.parseInt(aiDuration,10)||3;
+   const task=await aceRequest('/release_task',{
+    prompt:[aiStyle,aiEmotion,mood,aiInstrumentPlan,aiBackingVocals?'supportive background harmonies and chorus':'lead vocal only','clear Hindi pronunciation, full sung song, not instrumental'].filter(Boolean).join(', '),
+    lyrics:(lyrics||'').trim(),vocal_language:/hindi|हिंदी/i.test(aiLanguage)?'hi':/english/i.test(aiLanguage)?'en':'unknown',
+    instrumental:false,bpm:tempo,audio_duration:Math.max(10,Math.min(600,durationMinutes*60)),audio_format:'mp3',
+    thinking:true,inference_steps:8,batch_size:1
+   });
+   const taskId=task?.task_id||task?.taskId;
+   if(!taskId)throw new Error('API ने task ID नहीं लौटाई; audio generation शुरू नहीं मानी गई।');
+   setAceStatus('गाना जनरेट हो रहा है… task '+taskId+'। समय लग सकता है; पेज खुला रखें।');
+   let finished=null;
+   for(let attempt=0;attempt<120;attempt++){
+    await new Promise(resolve=>setTimeout(resolve,5000));
+    const response=await aceRequest('/query_result',{task_id_list:[taskId]});
+    const items=Array.isArray(response)?response:(response?.results||response?.data||[]);
+    const item=items.find?.(x=>String(x.task_id||x.taskId)===String(taskId))||items[0];
+    if(!item)continue;
+    const status=Number(item.status);
+    if(status===2)throw new Error(item.error||item.message||'ACE-Step generation failed.');
+    if(status===1){finished=item;break}
+    setAceStatus('गाना जनरेट हो रहा है… '+Math.round((attempt+1)/120*100)+'% polling progress (यह समय का अनुमान है, model progress नहीं)।');
+   }
+   if(!finished)throw new Error('10 मिनट में generation पूरी नहीं हुई। Server busy हो सकता है; बाद में दोबारा कोशिश करें।');
+   let result=finished.result;
+   if(typeof result==='string'){try{result=JSON.parse(result)}catch{result=[]}}
+   const first=Array.isArray(result)?result[0]:result;
+   const file=first?.file||first?.audio_url||first?.url;
+   if(!file)throw new Error('Task complete हुआ, लेकिन API ने audio file URL नहीं लौटाया। कोई audio तैयार होने की पुष्टि नहीं हुई।');
+   const base=aceBase();
+   const audioUrl=(file.startsWith('https://')||file.startsWith('http://'))?file:new URL(file,base+'/').toString();
+   const audioResponse=await fetch(audioUrl,{headers:aceApiKey.trim()?{Authorization:'Bearer '+aceApiKey.trim()}:{}});
+   if(!audioResponse.ok)throw new Error('Audio download विफल: HTTP '+audioResponse.status);
+   const blob=await audioResponse.blob();
+   if(!blob.size)throw new Error('API से खाली audio file मिली।');
+   const localUrl=URL.createObjectURL(blob);setGeneratedMusicUrl(localUrl);setGeneratedMusicMime(blob.type||'audio/mpeg');
+   setAceConnection('connected');setAceStatus('वास्तविक audio file प्राप्त हुई ('+(blob.size/1024/1024).toFixed(2)+' MB)। नीचे सुनें या डाउनलोड करें।');
+   try{localStorage.setItem('sur-ai-studio-acestep-endpoint-v1',base)}catch{}
+  }catch(e){setAceStatus('गाना नहीं बन पाया: '+(e?.message||'Unknown error')+' यह failure है—कोई fake success नहीं दिखाया गया।');}
+  finally{setAceBusy(false)}
+ };
  const downloadBlob=(blob,name)=>{const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)};
  const buildFinalSongPrompt=()=>[
-  'Create an original complete song. Do not copy an existing recording or melody.',
+  'TASK: Generate a COMPLETE SUNG SONG using the exact custom lyrics below, not an instrumental-only track.',
+  'LYRICS ARE THE SOURCE OF TRUTH. Sing every supplied lyric line in its original order and language. Do not rewrite, translate, summarize, skip, repeat, or invent lyric lines. Keep section labels such as [मुखड़ा], [अंतरा], [कोरस], [Verse], [Chorus], or [Bridge] as arrangement cues; do not sing the labels aloud.',
+  'Create an original singable melody that follows the supplied lyrics from beginning to end. If the service cannot generate vocals from custom lyrics, do not silently return instrumental-only audio.',
   'Title: '+(title||'New song'),
-  'Language: '+aiLanguage,
+  'Lyrics language: '+aiLanguage,
   'Genre/style: '+aiStyle,
   'Song emotion: '+aiEmotion,
   'Arrangement mood: '+mood,
   'Target duration: '+aiDuration,
   'Vocal mode: '+aiSingerMode,
-  'Backing vocals/harmonies/chorus: '+(aiBackingVocals?'yes, layered harmonies and chorus':'no, lead vocal only'),
+  'Backing vocals/harmonies/chorus: '+(aiBackingVocals?'yes, supportive layered harmonies and chorus':'no, lead vocal only'),
   'Arrangement/instrument plan: '+aiInstrumentPlan,
   'Tempo target: '+tempo+' BPM',
   'Reference style: '+referenceMood,
@@ -61,11 +129,12 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
   'Reference notes: '+(referenceNotes.trim()||'none'),
   'Track states and volumes: '+layers.map(x=>x.name+' ('+(x.on?'ON':'OFF')+', '+(x.volume??100)+'%)').join(', '),
   'Master volume target: '+masterVolume+'%; reverb target: '+reverbAmount+'%',
-  'Instructions: preserve the supplied lyrics exactly; create an original melody, clear verse/chorus structure, musical intro and outro, and a balanced vocal/music mix. Use only my own or explicitly authorized voice sample if the selected service supports it. The settings are creative instructions; external services may not honor every control exactly.',
+  'Use only my own or explicitly authorized voice sample if supported. Settings are requests; verify the actual generated output.',
   '',
-  'LYRICS:',
-  (lyrics||'').trim()
- ].join('\n');
+  'BEGIN EXACT CUSTOM LYRICS',
+  (lyrics||'').trim(),
+  'END EXACT CUSTOM LYRICS'
+ ].join('\\n');
  const copyPromptText=async textOut=>{
   try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(textOut);return true}}catch{}
   let field;
@@ -198,6 +267,18 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
  {error&&<div className="notice" role="status"><span><b>⚠ {error}</b></span></div>}
  <label className="field-label" htmlFor="sur-preview-length">Local preview की लंबाई</label><select id="sur-preview-length" className="text-input" value={previewSeconds} onChange={e=>setPreviewSeconds(Number(e.target.value))} style={{marginBottom:10}}><option value={30}>लगभग 30 सेकंड</option><option value={60}>लगभग 1 मिनट</option><option value={90}>लगभग 1.5 मिनट</option><option value={120}>लगभग 2 मिनट</option></select><small style={{display:'block',marginBottom:10}}>यह browser में बना instrumental sketch है—lyrics को गाने वाली AI vocals नहीं। Tempo के अनुसार वास्तविक अवधि थोड़ी अलग हो सकती है।</small><button className="primary-button" disabled={busy} onClick={makePreview}><Sparkles size={16}/>{busy?'Preview बन रहा है…':'Local audio preview बनाएं'}</button>
  {previewUrl&&<div className="recording-tools music-preview-tools"><b>Arrangement sketch · {tempo} BPM</b><audio controls src={previewUrl} className="recorded-audio"/><button className="outline-button" onClick={()=>{const a=document.createElement('a');a.href=previewUrl;a.download='sur-arrangement-sketch.wav';document.body.appendChild(a);a.click();a.remove()}}><Download size={14}/> WAV डाउनलोड</button><button className="outline-button" onClick={makePreview} disabled={busy}>नए controls से mix फिर बनाएं</button></div>}
- <div className="ai-music-panel" style={{border:'1px solid var(--border)',borderRadius:12,padding:12,margin:'12px 0 16px'}}><div className="panel-heading"><div className="heading-icon coral"><AudioWaveform size={18}/></div><div><h3>अंतिम चरण · AI से पूरा गाना बनाएं</h3><p>गीत, आवाज़, reference, tempo और arrangement तैयार होने के बाद ही यहाँ क्लिक करें।</p></div></div><div className="field-group" style={{marginTop:10}}><label className="field-label" htmlFor="ai-singer-mode">गायकी का तरीका</label><select id="ai-singer-mode" className="text-input" value={aiSingerMode} onChange={e=>setAiSingerMode(e.target.value)}><option>मेरी अपनी आवाज़</option><option>AI singer voice</option><option>Male lead + female harmony</option><option>Female lead + male harmony</option><option>Duet / दो गायक</option></select><label className="field-label" htmlFor="ai-duration">गाने की लंबाई</label><select id="ai-duration" className="text-input" value={aiDuration} onChange={e=>setAiDuration(e.target.value)}><option>1 मिनट</option><option>2 मिनट</option><option>3 मिनट</option><option>4 मिनट</option><option>5 मिनट</option></select><label className="field-label" htmlFor="ai-instruments">वाद्य और arrangement</label><textarea id="ai-instruments" className="story-input" rows={2} maxLength={500} value={aiInstrumentPlan} onChange={e=>setAiInstrumentPlan(e.target.value)} placeholder="Piano, guitar, tabla, strings…"/><label className="track-row lyric-toggle"><input type="checkbox" checked={aiBackingVocals} onChange={e=>setAiBackingVocals(e.target.checked)}/><span>Background vocals, harmony और chorus जोड़ें</span></label></div><div className="notice" role="status" style={{marginTop:8}}><Sparkles size={16}/><span><b>Sur AI Studio कोई paid music API call नहीं करेगा</b><small>Boppy और MuziAI बाहरी सेवाएँ हैं; उनकी दैनिक सीमाएँ/उपलब्धता बदल सकती हैं। अपनी आवाज़ चुनने पर सेवा में अपनी recording स्वयं upload करें और केवल अपनी/अनुमति वाली आवाज़ इस्तेमाल करें। यहाँ से lyrics/prompt कॉपी करें। गीत बनना या डाउनलोड होना बाहरी सेवा के नियंत्रण में है।</small></span></div><div className="two-fields" style={{marginTop:10}}><div><label className="field-label" htmlFor="sur-final-ai-provider">AI सेवा चुनें</label><select id="sur-final-ai-provider" className="text-input" value={aiService} onChange={e=>setAiService(e.target.value)}><option value="boppy">Boppy · बाहरी AI song generator</option><option value="muzi">MuziAI · बाहरी AI song generator</option></select></div><div><label className="field-label">अंतिम जाँच</label><small>{(lyrics||'').trim()?'Lyrics तैयार हैं · '+aiDuration+' · '+aiSingerMode:'पहले गीत के बोल लिखें या paste करें'}</small></div></div><button type="button" className="primary-button" style={{marginTop:10}} disabled={!(lyrics||'').trim()} onClick={()=>{const url=aiService==='muzi'?'https://muziai.live/':'https://boppy.me/free-ai-music-generator-no-sign-up';window.open(url,'_blank','noopener,noreferrer');copyPromptText(buildFinalSongPrompt()).then(copied=>notify(copied?'पूरा song prompt कॉपी हुआ। नई tab में AI सेवा में paste करके Generate दबाएँ।':'Clipboard अनुमति नहीं मिली—नीचे prompt TXT डाउनलोड करें और वहाँ paste करें।'))}}><Sparkles size={17}/> AI से गाना बनाएं · अंतिम क्लिक</button><div className="button-row" style={{marginTop:8}}><button type="button" className="outline-button" disabled={!(lyrics||'').trim()} onClick={()=>copyPromptText(buildFinalSongPrompt()).then(ok=>notify(ok?'Lyrics + सभी arrangement settings कॉपी हुए।':'कॉपी नहीं हुआ; prompt TXT डाउनलोड करें।'))}>पूरा Lyrics + music prompt कॉपी करें</button><button type="button" className="outline-button" disabled={!(lyrics||'').trim()} onClick={()=>copyPromptText(buildFinalSongPrompt()).then(ok=>notify(ok?'पूरा AI music prompt कॉपी हुआ।':'कॉपी नहीं हुआ; prompt TXT डाउनलोड करें।'))}>AI prompt कॉपी करें</button></div><div className="button-row" style={{marginTop:8}}><button type="button" className="outline-button" disabled={!(lyrics||'').trim()} onClick={()=>{const body='Sur AI Studio · Complete AI song prompt\n\n'+buildFinalSongPrompt();downloadBlob(new Blob([body],{type:'text/plain;charset=utf-8'}),(title||'sur-ai-song-prompt').replace(/[^a-zA-Z0-9-]+/g,'-')+'.ai-prompt.txt');notify('पूरा prompt TXT डाउनलोड शुरू हुआ—इसमें सभी settings और lyrics हैं।')}}>AI prompt TXT डाउनलोड करें</button></div><small>ध्यान दें: ये लिंक बाहरी सेवाएँ खोलते हैं; गीत बनवाने के लिए lyrics/prompt वहाँ paste करें। अभी Sur AI Studio के अंदर सीधे hosted AI music generation या वास्तविक voice cloning/pitch correction model उपलब्ध नहीं है। इस panel से कोई paid API request नहीं जाती।</small></div>
+ <div className="ai-music-panel" style={{border:'1px solid var(--border)',borderRadius:12,padding:12,margin:'12px 0 16px'}}><div className="panel-heading"><div className="heading-icon coral"><AudioWaveform size={18}/></div><div><h3>अंतिम चरण · AI से पूरा गाना बनाएं</h3><p>गीत, आवाज़, reference, tempo और arrangement तैयार होने के बाद ही यहाँ क्लिक करें।</p></div></div><div className="field-group" style={{marginTop:10}}><label className="field-label" htmlFor="ai-singer-mode">गायकी का तरीका</label><select id="ai-singer-mode" className="text-input" value={aiSingerMode} onChange={e=>setAiSingerMode(e.target.value)}><option>मेरी अपनी आवाज़</option><option>AI singer voice</option><option>Male lead + female harmony</option><option>Female lead + male harmony</option><option>Duet / दो गायक</option></select><label className="field-label" htmlFor="ai-duration">गाने की लंबाई</label><select id="ai-duration" className="text-input" value={aiDuration} onChange={e=>setAiDuration(e.target.value)}><option>1 मिनट</option><option>2 मिनट</option><option>3 मिनट</option><option>4 मिनट</option><option>5 मिनट</option></select><label className="field-label" htmlFor="ai-instruments">वाद्य और arrangement</label><textarea id="ai-instruments" className="story-input" rows={2} maxLength={500} value={aiInstrumentPlan} onChange={e=>setAiInstrumentPlan(e.target.value)} placeholder="Piano, guitar, tabla, strings…"/><label className="track-row lyric-toggle"><input type="checkbox" checked={aiBackingVocals} onChange={e=>setAiBackingVocals(e.target.checked)}/><span>Background vocals, harmony और chorus जोड़ें</span></label></div><div className="ace-step-panel" style={{border:'1px solid #cfc4f0',borderRadius:14,padding:14,margin:'14px 0',background:'#fbf9ff'}}>
+ <div className="panel-heading"><div className="heading-icon coral"><AudioWaveform size={18}/></div><div><h3>ACE-Step · असली lyrics-to-song जनरेशन</h3><p>यह कनेक्टर आपके custom lyrics को ACE-Step API में भेजता है और तैयार audio file वापस लाता है।</p></div></div>
+ <div className="notice" style={{marginTop:8}}><span><b>मुफ़्त मॉडल ≠ हमेशा मुफ़्त ऑनलाइन सर्वर</b><small>यहाँ ACE-Step का API server URL चाहिए। GitHub Pages खुद GPU model नहीं चला सकता। URL के बिना जनरेशन शुरू नहीं होगी; ऐप झूठा success नहीं दिखाएगा।</small></span></div>
+ <label className="field-label" htmlFor="sur-acestep-endpoint">ACE-Step API server URL</label>
+ <input id="sur-acestep-endpoint" className="text-input" type="url" autoComplete="url" value={aceEndpoint} onChange={e=>{setAceEndpoint(e.target.value);setAceConnection('unknown')}} placeholder="https://… आपका ACE-Step API server" style={{marginBottom:8}}/>
+ <label className="field-label" htmlFor="sur-acestep-key">API key (अगर server पर authentication चालू है)</label>
+ <input id="sur-acestep-key" className="text-input" type="password" autoComplete="off" value={aceApiKey} onChange={e=>setAceApiKey(e.target.value)} placeholder="वैकल्पिक · सिर्फ इस पेज की memory में" style={{marginBottom:8}}/>
+ <div className="button-row"><button type="button" className="outline-button" disabled={aceBusy||aceConnection==='checking'||!aceEndpoint.trim()} onClick={testAceConnection}>कनेक्शन जाँचें</button><button type="button" className="primary-button" disabled={aceBusy||!(lyrics||'').trim()||!aceEndpoint.trim()} onClick={generateWithAceStep}><Sparkles size={16}/>{aceBusy?'AI गाना बना रहा है…':'इसी lyrics से गाना बनाएं'}</button></div>
+ {aceStatus&&<div className="notice" role="status" aria-live="polite" style={{marginTop:10}}><span><b>{aceConnection==='connected'?'कनेक्शन / जनरेशन स्थिति':aceBusy?'जनरेशन जारी':'स्थिति'}</b><small>{aceStatus}</small></span></div>}
+ {generatedMusicUrl&&<div className="recording-tools" style={{marginTop:12}}><b>ACE-Step से मिला वास्तविक audio</b><audio controls src={generatedMusicUrl} className="recorded-audio"/><div className="button-row"><a className="outline-button" href={generatedMusicUrl} download={(title||'sur-ai-song').replace(/[^a-zA-Z0-9-]+/g,'-')+'.mp3'} style={{display:'inline-flex',alignItems:'center',textDecoration:'none'}}><Download size={14}/> गाना डाउनलोड करें</a></div></div>}
+ <small style={{display:'block',marginTop:9}}>जरूरी: server URL आपका अपना/विश्वसनीय होना चाहिए। API URL इस डिवाइस में सेव हो सकता है; API key reload के बाद सेव नहीं होती। Public server को lyrics/audio भेजने से पहले उसकी privacy जाँचें।</small>
+ </div>
+ <div className="notice" role="status" style={{marginTop:8}}><Sparkles size={16}/><span><b>Sur AI Studio कोई paid music API call नहीं करेगा</b><small>Boppy और MuziAI बाहरी सेवाएँ हैं; उनकी दैनिक सीमाएँ/उपलब्धता बदल सकती हैं। अपनी आवाज़ चुनने पर सेवा में अपनी recording स्वयं upload करें और केवल अपनी/अनुमति वाली आवाज़ इस्तेमाल करें। यहाँ से lyrics/prompt कॉपी करें। गीत बनना या डाउनलोड होना बाहरी सेवा के नियंत्रण में है।</small></span></div><div className="two-fields" style={{marginTop:10}}><div><label className="field-label" htmlFor="sur-final-ai-provider">AI सेवा चुनें</label><select id="sur-final-ai-provider" className="text-input" value={aiService} onChange={e=>setAiService(e.target.value)}><option value="boppy">Boppy · बाहरी AI song generator</option><option value="muzi">MuziAI · बाहरी AI song generator</option></select></div><div><label className="field-label">अंतिम जाँच</label><small>{(lyrics||'').trim()?'Lyrics तैयार हैं · '+aiDuration+' · '+aiSingerMode:'पहले गीत के बोल लिखें या paste करें'}</small></div></div><button type="button" className="primary-button" style={{marginTop:10}} disabled={!(lyrics||'').trim()} onClick={()=>{const url=aiService==='muzi'?'https://muziai.live/':'https://boppy.me/free-ai-music-generator-no-sign-up';window.open(url,'_blank','noopener,noreferrer');copyPromptText(buildFinalSongPrompt()).then(copied=>notify(copied?'पूरा lyrics-first prompt कॉपी हुआ। नई tab में paste करें; Generate से पहले custom lyrics और vocals का support जाँचें।':'Clipboard अनुमति नहीं मिली—नीचे prompt TXT डाउनलोड करें। चुनी सेवा में custom lyrics और vocals का support जाँचें।'))}}><Sparkles size={17}/> बाहरी AI में गीत बनाएं · prompt कॉपी करें</button><div className="button-row" style={{marginTop:8}}><button type="button" className="outline-button" disabled={!(lyrics||'').trim()} onClick={()=>copyPromptText(buildFinalSongPrompt()).then(ok=>notify(ok?'Lyrics + सभी arrangement settings कॉपी हुए।':'कॉपी नहीं हुआ; prompt TXT डाउनलोड करें।'))}>पूरा Lyrics + music prompt कॉपी करें</button><button type="button" className="outline-button" disabled={!(lyrics||'').trim()} onClick={()=>copyPromptText(buildFinalSongPrompt()).then(ok=>notify(ok?'पूरा AI music prompt कॉपी हुआ।':'कॉपी नहीं हुआ; prompt TXT डाउनलोड करें।'))}>AI prompt कॉपी करें</button></div><div className="button-row" style={{marginTop:8}}><button type="button" className="outline-button" disabled={!(lyrics||'').trim()} onClick={()=>{const body='Sur AI Studio · Complete AI song prompt\n\n'+buildFinalSongPrompt();downloadBlob(new Blob([body],{type:'text/plain;charset=utf-8'}),(title||'sur-ai-song-prompt').replace(/[^a-zA-Z0-9-]+/g,'-')+'.ai-prompt.txt');notify('पूरा prompt TXT डाउनलोड शुरू हुआ—इसमें सभी settings और lyrics हैं।')}}>AI prompt TXT डाउनलोड करें</button></div><small>ध्यान दें: ये लिंक बाहरी सेवाएँ खोलते हैं; गीत बनवाने के लिए lyrics/prompt वहाँ paste करें। अभी Sur AI Studio के अंदर सीधे hosted AI music generation या वास्तविक voice cloning/pitch correction model उपलब्ध नहीं है। इस panel से कोई paid API request नहीं जाती।</small></div>
  </section></div>;
 }
