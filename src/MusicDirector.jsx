@@ -118,11 +118,18 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
   if(musicModel==='lyria-3.5'&&!(lyrics||'').trim()&&musicVocalMode==='vocals'){setMusicStatus('Full song में vocal चाहिए तो पहले lyrics लिखें या AI से गीत बनाएं।');return}
   setMusicBusy(true);setMusicStatus('Google Lyria से असली audio बन रहा है। इसमें कुछ समय लग सकता है…');setError('');
   try{
-   const lyricBlock=useLyricsInMusic&&(lyrics||'').trim()?('\n\nLyrics:\n'+lyrics.trim()):'';
+   const fullLyrics=(lyrics||'').trim();
    const vocalInstruction=musicVocalMode==='instrumental'?'Instrumental only, no singing and no spoken words.':'Include sung vocals in Hindi or the language used in the lyrics. Do not imitate or name a real singer.';
    const layersBrief='Use these musical layers when appropriate: '+layers.filter(x=>x.on).map(x=>x.name).join(', ');
-   const common=[musicPrompt.trim(),mood+' mood',String(tempo)+' BPM',layersBrief,referenceNotes.trim()?'Additional arrangement notes: '+referenceNotes.trim():'',vocalInstruction,lyricBlock].filter(Boolean).join('\n');
+   const common=[musicPrompt.trim(),mood+' mood',String(tempo)+' BPM',layersBrief,referenceNotes.trim()?'Additional arrangement notes: '+referenceNotes.trim():'',vocalInstruction].filter(Boolean).join('\n');
    const makeRequest=async(part,total)=>{
+    let partLyrics=fullLyrics;
+    if(useLyricsInMusic&&fullLyrics&&total===2){
+     const sections=fullLyrics.split(/(?=^\s*\[(?:Intro|Verse|Chorus|Pre-Chorus|Pre-chorus|Bridge|Hook|Outro)[^\]]*\]\s*$)/im).map(x=>x.trim()).filter(Boolean);
+     if(sections.length>1){const mid=Math.ceil(sections.length/2);partLyrics=(part===1?sections.slice(0,mid):sections.slice(mid)).join('\n\n');}
+     else{const lines=fullLyrics.split(/\r?\n/),mid=Math.ceil(lines.length/2);partLyrics=(part===1?lines.slice(0,mid):lines.slice(mid)).join('\n').trim();}
+    }
+    const lyricBlock=useLyricsInMusic&&partLyrics?'\n\nLyrics:\n'+partLyrics:'';
     const duration=musicModel==='lyria-3-clip-preview'?'30-second':(targetSongLength==='5'?'2-minute 30-second':targetSongLength==='3'?'3-minute':'2-minute');
     const partGuide=total===2?(part===1?'Part 1 of 2: create the first half of one continuous Hindi song, with intro, verse 1 and first chorus. End musically with a short instrumental turnaround, not a final ending.':'Part 2 of 2: continue the SAME song from part 1, with verse 2, a fresh chorus, bridge and satisfying outro. Keep the same key, tempo, instrumentation, vocal character and mood; do not restart with a new intro.'):'Create a complete song with intro, verses, recurring chorus, bridge and ending.';
     const timing=musicModel==='lyria-3-clip-preview'?'Create a polished 30-second music clip.':(targetSongLength==='5'?'Aim for about 2 minutes 30 seconds for this section; the final 5-minute version will join two generated sections.':targetSongLength==='3'?'Aim for a full 3-minute song.':'Aim for about 2 minutes.');
