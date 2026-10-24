@@ -47,7 +47,7 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
  const [aceConnection,setAceConnection]=useState('unknown');
  const [aiSingerMode,setAiSingerMode]=useState('मेरी अपनी आवाज़'),[aiBackingVocals,setAiBackingVocals]=useState(true),[aiDuration,setAiDuration]=useState('3 मिनट'),[aiInstrumentPlan,setAiInstrumentPlan]=useState('Soft piano, acoustic guitar, lush strings, gentle tabla, warm bass, light percussion');
 
- const aceBase=()=>{const value=aceEndpoint.trim().replace(/\\/+$/,'');if(!value)throw new Error('पहले अपने ACE-Step API server का HTTPS URL डालें।');let parsed;try{parsed=new URL(value)}catch{throw new Error('API URL सही नहीं है। पूरा https:// URL डालें।')}if(!['https:','http:'].includes(parsed.protocol))throw new Error('API URL http या https होना चाहिए।');return value};
+ const aceBase=()=>{let value=aceEndpoint.trim();while(value.endsWith('/'))value=value.slice(0,-1);if(!value)throw new Error('पहले अपने ACE-Step API server का HTTPS URL डालें।');let parsed;try{parsed=new URL(value)}catch{throw new Error('API URL सही नहीं है। पूरा https:// URL डालें।')}if(!['https:','http:'].includes(parsed.protocol))throw new Error('API URL http या https होना चाहिए।');return value};
  const aceRequest=async(path,body)=>{
   const base=aceBase();
   const headers={'Content-Type':'application/json'};
@@ -97,7 +97,7 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
    const file=first?.file||first?.audio_url||first?.url;
    if(!file)throw new Error('Task complete हुआ, लेकिन API ने audio file URL नहीं लौटाया। कोई audio तैयार होने की पुष्टि नहीं हुई।');
    const base=aceBase();
-   const audioUrl=/^https?:\\/\\//i.test(file)?file:new URL(file,base+'/').toString();
+   const audioUrl=(file.startsWith('https://')||file.startsWith('http://'))?file:new URL(file,base+'/').toString();
    const audioResponse=await fetch(audioUrl,{headers:aceApiKey.trim()?{Authorization:'Bearer '+aceApiKey.trim()}:{}});
    if(!audioResponse.ok)throw new Error('Audio download विफल: HTTP '+audioResponse.status);
    const blob=await audioResponse.blob();
