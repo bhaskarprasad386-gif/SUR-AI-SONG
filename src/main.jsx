@@ -193,6 +193,7 @@ function App(){
     if(enabled('strings')||enabled('pads'))chord.forEach(freq=>addTone(freq/2,start,len,.018,'sawtooth'));
     if(enabled('bass'))addTone(chord[0]/2,start,len*.9,.055,'sine');
    }
+   if(enabled('flute'))for(let beat=0;beat<beats;beat+=2){const chord=chords[(Math.floor(beat/4))%chords.length],start=beat*60/bpm;addTone(chord[Math.floor(beat/2)%chord.length]*2,start,Math.max(.12,60/bpm*.42),.012,'sine')}
    if(enabled('percussion'))for(let beat=0;beat<beats;beat++){
     const start=beat*60/bpm;
     if(beat%4===0)addTone(95,start,.11,.075,'sine');
