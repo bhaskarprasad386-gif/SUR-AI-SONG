@@ -31,11 +31,20 @@ export default function MusicDirector(){
   setRefFile(file);setAnalysis(null);setError('');if(!file)return;setAnalysisBusy(true);
   try{
    const C=window.AudioContext||window.webkitAudioContext;if(!C)throw new Error('Browser audio analysis उपलब्ध नहीं है।');
-   const ctx=new C();const raw=await file.arrayBuffer();const buffer=await ctx.decodeAudioData(raw);await ctx.close().catch(()=>{});
+   const ctx=new C();let buffer;
+   try{const raw=await file.arrayBuffer();buffer=await ctx.decodeAudioData(raw)}finally{await ctx.close().catch(()=>{})}
    const channels=buffer.numberOfChannels,duration=buffer.duration,sampleRate=buffer.sampleRate,frames=buffer.length;
-   let sum=0,peak=0,cross=0,count=0;
-   for(let ch=0;ch<channels;ch++){const d=buffer.getChannelData(ch);let prev=d[0]||0;const step=Math.max(1,Math.floor(frames/200000));for(let i=0;i<frames;i+=step){const s=d[i]||0;sum+=s*s;peak=Math.max(peak,Math.abs(s));if(i>0&&((s>=0)!==(prev>=0)))cross++;prev=s;count++;}}
-   const rms=Math.sqrt(sum/Math.max(1,count)),approxBpm=Math.max(55,Math.min(180,Math.round((cross/Math.max(1,count))*sampleRate*60/2)));
+   let sum=0,peak=0,count=0;
+   const sampleStep=Math.max(1,Math.floor(frames/200000));
+   for(let ch=0;ch<channels;ch++){const d=buffer.getChannelData(ch);for(let i=0;i<frames;i+=sampleStep){const value=d[i]||0;sum+=value*value;peak=Math.max(peak,Math.abs(value));count++;}}
+   const rms=Math.sqrt(sum/Math.max(1,count));
+   // Estimate tempo from short-window energy pulses, not raw zero-crossings.
+   const hop=Math.max(1,Math.floor(sampleRate*0.01)),envelope=[];
+   for(let start=0;start<frames;start+=hop){let energy=0,n=0;const end=Math.min(frames,start+hop);for(let i=start;i<end;i+=Math.max(1,Math.floor((end-start)/120))){let mono=0;for(let ch=0;ch<channels;ch++)mono+=buffer.getChannelData(ch)[i]||0;mono/=channels;energy+=mono*mono;n++;}envelope.push(Math.sqrt(energy/Math.max(1,n)));}
+   const mean=envelope.reduce((a,b)=>a+b,0)/Math.max(1,envelope.length),env=envelope.map(v=>v-mean);
+   let bestBpm=null,bestScore=-Infinity;
+   for(let bpm=55;bpm<=180;bpm++){const lag=Math.round(60/(bpm*0.01));if(lag<1||lag>=env.length)continue;let score=0,a=0,b=0;for(let i=lag;i<env.length;i++){score+=env[i]*env[i-lag];a+=env[i]*env[i];b+=env[i-lag]*env[i-lag]}const normalized=score/Math.sqrt(Math.max(1e-12,a*b));if(normalized>bestScore){bestScore=normalized;bestBpm=bpm;}}
+   const approxBpm=bestScore>0.08?bestBpm:null;
    setAnalysis({duration,sampleRate,channels,peak,rms,approxBpm});
   }catch(e){setError(e?.message||'Reference audio decode नहीं हुआ। WAV/MP3/M4A file आज़माएं।')}finally{setAnalysisBusy(false)}
  };
@@ -51,9 +60,9 @@ export default function MusicDirector(){
   }catch(e){setError(e?.message||'Preview नहीं बन सका।')}finally{setBusy(false)}
  };
  return <div className="single-workspace"><section className="panel"><div className="panel-heading"><div className="heading-icon purple"><Music2 size={19}/></div><div><h2>Music Director</h2><p>मूड, tempo, layers और reference audio को एक जगह नियंत्रित करें</p></div></div>
- <div className="reference-card"><div className="ref-icon"><ScanSearch size={22}/></div><div className="ref-copy"><b>Reference song technical analysis</b><p>Browser में audio decode करके duration, sample rate, channels, peak/RMS और approximate BPM निकाला जाएगा। यह style/instrument recognition नहीं है।</p>{refFile&&<small className="file-picked"><Check size={13}/>{refFile.name}</small>}</div><input hidden id="music-reference-input" type="file" accept="audio/*" onChange={e=>analyze(e.target.files?.[0])}/><button className="outline-button" onClick={()=>document.getElementById('music-reference-input')?.click()}><Upload size={15}/> Reference चुनें</button></div>
+ <div className="reference-card"><div className="ref-icon"><ScanSearch size={22}/></div><div className="ref-copy"><b>Reference song technical analysis</b><p>Browser में audio decode करके duration, sample rate, channels, peak/RMS और approximate BPM निकाला जाएगा। यह style/instrument recognition नहीं है।</p>{refFile&&<small className="file-picked"><Check size={13}/>{refFile.name}</small>}</div><input hidden id="music-reference-input" type="file" accept="audio/*" onChange={e=>{analyze(e.target.files?.[0]);e.target.value=''}}/><button className="outline-button" onClick={()=>document.getElementById('music-reference-input')?.click()}><Upload size={15}/> Reference चुनें</button></div>
  {analysisBusy&&<div className="notice"><Sparkles size={17}/><span><b>Reference analyze हो रहा है…</b><small>Local browser decoding चल रही है; audio कहीं upload नहीं हो रहा।</small></span></div>}
- {analysis&&<div className="media-list"><div className="media-item"><AudioWaveform size={16}/><span>{analysis.duration.toFixed(1)} sec · {analysis.sampleRate} Hz · {analysis.channels} ch</span><small>Peak {analysis.peak.toFixed(3)} · RMS {analysis.rms.toFixed(3)} · ~{analysis.approxBpm} BPM</small></div></div>}
+ {analysis&&<div className="media-list"><div className="media-item"><AudioWaveform size={16}/><span>{analysis.duration.toFixed(1)} sec · {analysis.sampleRate} Hz · {analysis.channels} ch</span><small>Peak {analysis.peak.toFixed(3)} · RMS {analysis.rms.toFixed(3)} · {analysis.approxBpm?`~${analysis.approxBpm} BPM estimated`:'BPM estimate unavailable'}</small></div></div>}
  <div className="two-fields"><div><label className="field-label">Target mood</label><select className="text-input" value={mood} onChange={e=>setMood(e.target.value)}>{moods.map(m=><option key={m}>{m}</option>)}</select></div><div><label className="field-label">Tempo · {tempo} BPM</label><input type="range" min="55" max="160" value={tempo} onChange={e=>setTempo(+e.target.value)} className="range"/></div></div>
  <label className="field-label">Multi-track arrangement</label><div className="track-list">{layers.map((l,i)=><div className="track-row" key={l.name}><div className="track-symbol"><AudioWaveform size={16}/></div><div className="track-label"><b>{l.name}</b><small>{l.kind}</small></div><div className={'fake-wave '+(!l.on?'wave-muted':'')}>{Array.from({length:30},(_,j)=><i key={j} style={{height:(7+((j*17+i*13)%24))+'px'}}/>)}</div><button className={'toggle '+(l.on?'toggle-on':'')} onClick={()=>toggle(i)} aria-label={'toggle '+l.name}><span/></button></div>)}</div>
  <div className="notice"><Layers3 size={17}/><span><b>Local arrangement sketch · {mood}</b><small>64-beat browser synthesis. Mood अभी visual/metadata selection है; generated sound is a simple synthesized sketch, not AI-generated instruments, singing, or real stems.</small></span></div>
