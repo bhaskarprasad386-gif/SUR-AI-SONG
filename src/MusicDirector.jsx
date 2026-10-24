@@ -1,73 +1,114 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AudioWaveform, Check, Download, Layers3, Music2, ScanSearch, Sparkles, Upload } from 'lucide-react';
+import { AudioWaveform, Check, Download, Layers3, Music2, ScanSearch, Sparkles, Upload, Plus, X } from 'lucide-react';
 
 const DEFAULT_LAYERS=[
- {name:'Acoustic guitar',kind:'Instrument',on:true},
- {name:'Soft piano',kind:'Instrument',on:true},
- {name:'Strings & pads',kind:'Atmosphere',on:false},
- {name:'Bass',kind:'Instrument',on:true},
- {name:'Percussion',kind:'Rhythm',on:true},
+ {name:'Acoustic guitar',kind:'Instrument',on:true,volume:75},
+ {name:'Soft piano',kind:'Instrument',on:true,volume:70},
+ {name:'Strings & pads',kind:'Atmosphere',on:false,volume:45},
+ {name:'Bass',kind:'Instrument',on:true,volume:65},
+ {name:'Percussion',kind:'Rhythm',on:true,volume:55},
 ];
 const moods=['Romantic Bollywood','Acoustic ballad','Indie pop','Cinematic orchestral','Folk fusion','Devotional'];
-
+const TRACK_OPTIONS=[
+ {name:'Flute',kind:'Instrument'},
+ {name:'Strings & pads',kind:'Atmosphere'},
+ {name:'Backing vocals',kind:'Voice'},
+ {name:'Bass',kind:'Instrument'},
+ {name:'Percussion',kind:'Rhythm'},
+ {name:'Soft piano',kind:'Instrument'},
+ {name:'Acoustic guitar',kind:'Instrument'},
+];
 function audioBufferToWav(buffer){
- const channels=Math.min(2,buffer.numberOfChannels),frames=buffer.length,rate=buffer.sampleRate,bytes=44+frames*channels*2;
+ const channels=Math.min(2,buffer.numberOfChannels),frames=buffer.length,rate=buffer.sampleRate;
+ const bytes=44+frames*channels*2;
+ if(!Number.isSafeInteger(bytes)||bytes<44||frames<1||rate<1)throw new Error('Audio export का आकार समर्थित नहीं है।');
  const view=new DataView(new ArrayBuffer(bytes));
  const write=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i))};
  write(0,'RIFF');view.setUint32(4,bytes-8,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,channels,true);view.setUint32(24,rate,true);view.setUint32(28,rate*channels*2,true);view.setUint16(32,channels*2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,bytes-44,true);
  const data=Array.from({length:channels},(_,ch)=>buffer.getChannelData(ch));let peak=0;
- for(let ch=0;ch<channels;ch++)for(let i=0;i<frames;i++)peak=Math.max(peak,Math.abs(data[ch][i]||0));
+ for(let ch=0;ch<channels;ch++)for(let i=0;i<frames;i++){const v=data[ch][i];if(Number.isFinite(v))peak=Math.max(peak,Math.abs(v));}
  const gain=peak>0?Math.min(2,.92/peak):1;let o=44;
- for(let i=0;i<frames;i++)for(let ch=0;ch<channels;ch++){const s=Math.max(-1,Math.min(1,(data[ch][i]||0)*gain));view.setInt16(o,s<0?s*32768:s*32767,true);o+=2;}
+ for(let i=0;i<frames;i++)for(let ch=0;ch<channels;ch++){const raw=data[ch][i],v=Math.max(-1,Math.min(1,(Number.isFinite(raw)?raw:0)*gain));view.setInt16(o,v<0?v*32768:v*32767,true);o+=2;}
  return new Blob([view],{type:'audio/wav'});
 }
-
 export default function MusicDirector(){
- const [tempo,setTempo]=useState(92),[mood,setMood]=useState('Romantic Bollywood'),[layers,setLayers]=useState(DEFAULT_LAYERS),[previewUrl,setPreviewUrl]=useState(''),[busy,setBusy]=useState(false),[refFile,setRefFile]=useState(null),[analysis,setAnalysis]=useState(null),[analysisBusy,setAnalysisBusy]=useState(false),[error,setError]=useState('');
+ const [tempo,setTempo]=useState(92),[mood,setMood]=useState('Romantic Bollywood'),[layers,setLayers]=useState(DEFAULT_LAYERS),[previewUrl,setPreviewUrl]=useState(''),[busy,setBusy]=useState(false),[refFile,setRefFile]=useState(null),[analysis,setAnalysis]=useState(null),[analysisBusy,setAnalysisBusy]=useState(false),[error,setError]=useState(''),[newTrack,setNewTrack]=useState('Flute');
  const urlRef=useRef('');
  useEffect(()=>()=>{if(urlRef.current)URL.revokeObjectURL(urlRef.current)},[]);
  const toggle=i=>setLayers(a=>a.map((x,j)=>j===i?{...x,on:!x.on}:x));
+ const setVolume=(i,volume)=>setLayers(a=>a.map((x,j)=>j===i?{...x,volume}:x));
+ const addTrack=()=>{
+  const option=TRACK_OPTIONS.find(x=>x.name===newTrack);
+  if(!option)return;
+  if(layers.some(x=>x.name.toLowerCase()===option.name.toLowerCase())){setError(option.name+' track पहले से मौजूद है।');return}
+  if(layers.length>=12){setError('अधिकतम 12 tracks रख सकते हैं।');return}
+  setLayers(a=>[...a,{...option,on:true,volume:70,custom:true}]);setError('');
+ };
  const analyze=async file=>{
   setRefFile(file);setAnalysis(null);setError('');if(!file)return;setAnalysisBusy(true);
   try{
    const C=window.AudioContext||window.webkitAudioContext;if(!C)throw new Error('Browser audio analysis उपलब्ध नहीं है।');
    const ctx=new C();let buffer;
-   try{const raw=await file.arrayBuffer();buffer=await ctx.decodeAudioData(raw)}finally{await ctx.close().catch(()=>{})}
-   const channels=buffer.numberOfChannels,duration=buffer.duration,sampleRate=buffer.sampleRate,frames=buffer.length;
-   let sum=0,peak=0,count=0;
+   try{buffer=await ctx.decodeAudioData(await file.arrayBuffer())}finally{await ctx.close().catch(()=>{})}
+   const channels=buffer.numberOfChannels,duration=buffer.duration,sampleRate=buffer.sampleRate,frames=buffer.length;let sum=0,peak=0,count=0;
    const sampleStep=Math.max(1,Math.floor(frames/200000));
    for(let ch=0;ch<channels;ch++){const d=buffer.getChannelData(ch);for(let i=0;i<frames;i+=sampleStep){const value=d[i]||0;sum+=value*value;peak=Math.max(peak,Math.abs(value));count++;}}
-   const rms=Math.sqrt(sum/Math.max(1,count));
-   // Estimate tempo from short-window energy pulses, not raw zero-crossings.
-   const hop=Math.max(1,Math.floor(sampleRate*0.01)),envelope=[];
-   for(let start=0;start<frames;start+=hop){let energy=0,n=0;const end=Math.min(frames,start+hop);for(let i=start;i<end;i+=Math.max(1,Math.floor((end-start)/120))){let mono=0;for(let ch=0;ch<channels;ch++)mono+=buffer.getChannelData(ch)[i]||0;mono/=channels;energy+=mono*mono;n++;}envelope.push(Math.sqrt(energy/Math.max(1,n)));}
-   const mean=envelope.reduce((a,b)=>a+b,0)/Math.max(1,envelope.length),env=envelope.map(v=>v-mean);
-   let bestBpm=null,bestScore=-Infinity;
-   for(let bpm=55;bpm<=180;bpm++){const lag=Math.round(60/(bpm*0.01));if(lag<1||lag>=env.length)continue;let score=0,a=0,b=0;for(let i=lag;i<env.length;i++){score+=env[i]*env[i-lag];a+=env[i]*env[i];b+=env[i-lag]*env[i-lag]}const normalized=score/Math.sqrt(Math.max(1e-12,a*b));if(normalized>bestScore){bestScore=normalized;bestBpm=bpm;}}
-   const approxBpm=bestScore>0.08?bestBpm:null;
-   setAnalysis({duration,sampleRate,channels,peak,rms,approxBpm});
+   const rms=Math.sqrt(sum/Math.max(1,count)),hop=Math.max(1,Math.floor(sampleRate*.01)),env=[];
+   for(let start=0;start<frames;start+=hop){let energy=0,n=0;const end=Math.min(frames,start+hop),step=Math.max(1,Math.floor((end-start)/120));for(let i=start;i<end;i+=step){let mono=0;for(let ch=0;ch<channels;ch++)mono+=buffer.getChannelData(ch)[i]||0;mono/=channels;energy+=mono*mono;n++;}env.push(Math.sqrt(energy/Math.max(1,n)));}
+   const mean=env.reduce((a,b)=>a+b,0)/Math.max(1,env.length),centered=env.map(v=>v-mean);let bestBpm=null,bestScore=-Infinity;
+   for(let bpm=55;bpm<=180;bpm++){const lag=Math.round(60/(bpm*.01));if(lag<1||lag>=centered.length)continue;let score=0,a=0,b=0;for(let i=lag;i<centered.length;i++){score+=centered[i]*centered[i-lag];a+=centered[i]*centered[i];b+=centered[i-lag]*centered[i-lag]}const normalized=score/Math.sqrt(Math.max(1e-12,a*b));if(normalized>bestScore){bestScore=normalized;bestBpm=bpm;}}
+   setAnalysis({duration,sampleRate,channels,peak,rms,approxBpm:bestScore>.08?bestBpm:null});
   }catch(e){setError(e?.message||'Reference audio decode नहीं हुआ। WAV/MP3/M4A file आज़माएं।')}finally{setAnalysisBusy(false)}
  };
  const makePreview=async()=>{
-  const active=layers.filter(x=>x.on);if(!active.length){setError('कम-से-कम एक layer चालू करें।');return}setBusy(true);setError('');
+  const active=layers.filter(x=>x.on&&x.kind!=='Voice');
+  if(!active.length){setError('कम-से-कम एक instrument track चालू करें।');return}
+  setBusy(true);setError('');
   try{
-   const bpm=Math.max(55,Math.min(160,tempo)),sr=22050,beats=64,duration=beats*60/bpm;const ctx=new OfflineAudioContext(2,Math.ceil(duration*sr),sr);
-   const add=(freq,start,len,vol,type='sine')=>{const o=ctx.createOscillator(),g=ctx.createGain(),f=ctx.createBiquadFilter();o.type=type;o.frequency.value=freq;f.type='lowpass';f.frequency.value=type==='triangle'?1800:1300;g.gain.setValueAtTime(.0001,start);g.gain.exponentialRampToValueAtTime(Math.max(.0002,vol),start+.02);g.gain.setValueAtTime(Math.max(.0002,vol),Math.max(start+.03,start+len-.08));g.gain.exponentialRampToValueAtTime(.0001,start+len);o.connect(f);f.connect(g);g.connect(ctx.destination);o.start(start);o.stop(start+len+.01)};
-   const has=n=>active.some(x=>x.name===n),chords=[[261.63,329.63,392],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]];
-   for(let beat=0;beat<beats;beat+=4){const start=beat*60/bpm,len=4*60/bpm,ch=chords[(beat/4)%chords.length];if(has('Soft piano'))ch.forEach(f=>add(f,start,len,.045,'sine'));if(has('Acoustic guitar'))for(let n=0;n<8;n++)add(ch[n%3]*2,start+n*len/8,len/10,.022,'triangle');if(has('Strings & pads'))ch.forEach(f=>add(f/2,start,len,.025,'sine'));if(has('Bass'))add(ch[0]/2,start,len,.065,'sine');}
-   if(has('Percussion'))for(let beat=0;beat<beats;beat++){const s=beat*60/bpm;add(beat%4===0?110:beat%2===0?82:65,s,.075,beat%4===0?.07:.035,'sine');if(beat%2===0)add(1200,s,.025,.016,'triangle')}
-   const url=URL.createObjectURL(audioBufferToWav(await ctx.startRendering()));if(urlRef.current)URL.revokeObjectURL(urlRef.current);urlRef.current=url;setPreviewUrl(url);
-  }catch(e){setError(e?.message||'Preview नहीं बन सका।')}finally{setBusy(false)}
+   const bpm=Math.max(55,Math.min(160,tempo)),sr=22050,beats=64,duration=beats*60/bpm;
+   const ctx=new OfflineAudioContext(2,Math.ceil(duration*sr),sr);
+   const level=name=>Math.max(0,Math.min(1,(active.find(x=>x.name.toLowerCase()===name.toLowerCase())?.volume??0)/100));
+   const has=name=>level(name)>0;
+   const add=(freq,start,len,vol,type='sine')=>{
+    if(!(vol>0)||!Number.isFinite(freq)||!Number.isFinite(start)||!Number.isFinite(len)||len<=.025)return;
+    const o=ctx.createOscillator(),g=ctx.createGain(),f=ctx.createBiquadFilter();
+    o.type=type;o.frequency.setValueAtTime(freq,start);f.type='lowpass';f.frequency.value=type==='triangle'?1800:type==='sawtooth'?900:1300;
+    const peak=Math.max(.0002,vol);g.gain.setValueAtTime(.0001,start);g.gain.exponentialRampToValueAtTime(peak,start+.02);g.gain.setValueAtTime(peak,Math.max(start+.03,start+len-.08));g.gain.exponentialRampToValueAtTime(.0001,start+len);
+    o.connect(f);f.connect(g);g.connect(ctx.destination);o.start(start);o.stop(start+len+.01);
+   };
+   const progressions={
+    'Romantic Bollywood':[[261.63,329.63,392],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]],
+    'Acoustic ballad':[[196,246.94,293.66],[164.81,196,246.94],[130.81,164.81,196],[146.83,196,220]],
+    'Indie pop':[[220,277.18,329.63],[174.61,220,261.63],[261.63,329.63,392],[196,246.94,293.66]],
+    'Cinematic orchestral':[[146.83,220,293.66],[130.81,196,261.63],[174.61,261.63,349.23],[196,293.66,392]],
+    'Folk fusion':[[196,246.94,293.66],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]],
+    'Devotional':[[261.63,349.23,392],[293.66,392,440],[220,293.66,329.63],[261.63,349.23,392]]
+   };
+   const chords=progressions[mood]||progressions['Romantic Bollywood'];
+   for(let beat=0;beat<beats;beat+=4){
+    const start=beat*60/bpm,len=4*60/bpm,ch=chords[(beat/4)%chords.length];
+    if(has('Soft piano'))ch.forEach(freq=>add(freq,start,len*.94,.038*level('Soft piano'),'sine'));
+    if(has('Acoustic guitar'))for(let n=0;n<8;n++)add(ch[n%ch.length]*2,start+n*len/8,len/10,.024*level('Acoustic guitar'),'triangle');
+    if(has('Strings & pads'))ch.forEach(freq=>add(freq/2,start,len,.018*level('Strings & pads'),'sawtooth'));
+    if(has('Bass'))add(ch[0]/2,start,len*.9,.055*level('Bass'),'sine');
+   }
+   if(has('Flute'))for(let beat=0;beat<beats;beat+=2){const ch=chords[Math.floor(beat/4)%chords.length],start=beat*60/bpm;add(ch[Math.floor(beat/2)%ch.length]*2,start,Math.max(.12,60/bpm*.42),.012*level('Flute'),'sine')}
+   if(has('Percussion'))for(let beat=0;beat<beats;beat++){const start=beat*60/bpm,vol=level('Percussion');if(beat%4===0)add(95,start,.11,.075*vol,'sine');else if(beat%2===0)add(145,start,.06,.026*vol,'triangle');if(beat%2===0)add(1250,start,.025,.012*vol,'triangle')}
+   const rendered=await ctx.startRendering(),blob=audioBufferToWav(rendered),url=URL.createObjectURL(blob);
+   if(urlRef.current)URL.revokeObjectURL(urlRef.current);urlRef.current=url;setPreviewUrl(url);
+  }catch(e){setError(e?.message||'Preview नहीं बन सका। Browser audio support या उपलब्ध memory जाँचें.')}finally{setBusy(false)}
  };
  return <div className="single-workspace"><section className="panel"><div className="panel-heading"><div className="heading-icon purple"><Music2 size={19}/></div><div><h2>Music Director</h2><p>मूड, tempo, layers और reference audio को एक जगह नियंत्रित करें</p></div></div>
  <div className="reference-card"><div className="ref-icon"><ScanSearch size={22}/></div><div className="ref-copy"><b>Reference song technical analysis</b><p>Browser में audio decode करके duration, sample rate, channels, peak/RMS और approximate BPM निकाला जाएगा। यह style/instrument recognition नहीं है।</p>{refFile&&<small className="file-picked"><Check size={13}/>{refFile.name}</small>}</div><input hidden id="music-reference-input" type="file" accept="audio/*" onChange={e=>{analyze(e.target.files?.[0]);e.target.value=''}}/><button className="outline-button" onClick={()=>document.getElementById('music-reference-input')?.click()}><Upload size={15}/> Reference चुनें</button></div>
  {analysisBusy&&<div className="notice"><Sparkles size={17}/><span><b>Reference analyze हो रहा है…</b><small>Local browser decoding चल रही है; audio कहीं upload नहीं हो रहा।</small></span></div>}
- {analysis&&<div className="media-list"><div className="media-item"><AudioWaveform size={16}/><span>{analysis.duration.toFixed(1)} sec · {analysis.sampleRate} Hz · {analysis.channels} ch</span><small>Peak {analysis.peak.toFixed(3)} · RMS {analysis.rms.toFixed(3)} · {analysis.approxBpm?`~${analysis.approxBpm} BPM estimated`:'BPM estimate unavailable'}</small></div></div>}
- <div className="two-fields"><div><label className="field-label">Target mood</label><select className="text-input" value={mood} onChange={e=>setMood(e.target.value)}>{moods.map(m=><option key={m}>{m}</option>)}</select></div><div><label className="field-label">Tempo · {tempo} BPM</label><input type="range" min="55" max="160" value={tempo} onChange={e=>setTempo(+e.target.value)} className="range"/></div></div>
- <label className="field-label">Multi-track arrangement</label><div className="track-list">{layers.map((l,i)=><div className="track-row" key={l.name}><div className="track-symbol"><AudioWaveform size={16}/></div><div className="track-label"><b>{l.name}</b><small>{l.kind}</small></div><div className={'fake-wave '+(!l.on?'wave-muted':'')}>{Array.from({length:30},(_,j)=><i key={j} style={{height:(7+((j*17+i*13)%24))+'px'}}/>)}</div><button className={'toggle '+(l.on?'toggle-on':'')} onClick={()=>toggle(i)} aria-label={'toggle '+l.name}><span/></button></div>)}</div>
- <div className="notice"><Layers3 size={17}/><span><b>Local arrangement sketch · {mood}</b><small>64-beat browser synthesis. Mood अभी visual/metadata selection है; generated sound is a simple synthesized sketch, not AI-generated instruments, singing, or real stems.</small></span></div>
- {error&&<div className="notice"><span><b>⚠ {error}</b></span></div>}
+ {analysis&&<div className="media-list"><div className="media-item"><AudioWaveform size={16}/><span>{analysis.duration.toFixed(1)} sec · {analysis.sampleRate} Hz · {analysis.channels} ch</span><small>Peak {analysis.peak.toFixed(3)} · RMS {analysis.rms.toFixed(3)} · {analysis.approxBpm?'∼'+analysis.approxBpm+' BPM estimated':'BPM estimate unavailable'}</small>{analysis.approxBpm&&<button className="outline-button" onClick={()=>setTempo(Math.max(55,Math.min(160,analysis.approxBpm)))}>Tempo लागू करें</button>}</div></div>}
+ <div className="two-fields"><div><label className="field-label">Target mood</label><select className="text-input" value={mood} onChange={e=>setMood(e.target.value)}>{moods.map(m=><option key={m}>{m}</option>)}</select></div><div><label className="field-label">Tempo · {tempo} BPM</label><input aria-label="Tempo BPM" type="range" min="55" max="160" value={tempo} onChange={e=>setTempo(+e.target.value)} className="range"/></div></div>
+ <label className="field-label">Multi-track arrangement · {layers.length}/12 tracks</label>
+ <div className="button-row" style={{marginTop:8,marginBottom:12}}><select className="text-input" aria-label="नया track चुनें" value={newTrack} onChange={e=>setNewTrack(e.target.value)} style={{flex:'1 1 150px'}}>{TRACK_OPTIONS.map(t=><option key={t.name} value={t.name}>{t.name}</option>)}</select><button type="button" className="outline-button" disabled={layers.length>=12} onClick={addTrack}><Plus size={14}/> Track जोड़ें</button></div>
+ <div className="track-list">{layers.map((l,i)=><div className="track-row" key={l.name}><div className="track-symbol"><AudioWaveform size={16}/></div><div className="track-label" style={{minWidth:110}}><b>{l.name}</b><small>{l.kind}{l.custom?' · Added':''}</small><label style={{display:'block',fontSize:10,marginTop:7}}>{l.volume??100}% volume<input aria-label={l.name+' volume'} type="range" min="0" max="100" step="5" value={l.volume??100} onChange={e=>setVolume(i,Number(e.target.value))} style={{width:'100%',accentColor:'var(--accent)'}}/></label></div><div className={'fake-wave '+(!l.on?'wave-muted':'')}>{Array.from({length:30},(_,j)=><i key={j} style={{height:(7+((j*17+i*13)%24))+'px'}/>)}</div><button className={'toggle '+(l.on?'toggle-on':'')} onClick={()=>toggle(i)} aria-label={(l.on?'बंद करें ':'चालू करें ')+l.name}><span/></button>{l.custom&&<button type="button" className="icon-button" onClick={()=>setLayers(a=>a.filter((_,j)=>j!==i))} aria-label={l.name+' हटाएं'} title="Track हटाएं"><X size={14}/></button>}</div>)}</div>
+ <div className="notice"><Layers3 size={17}/><span><b>Local arrangement sketch · {mood}</b><small>Instrument volume WAV export में लागू होता है। Backing vocals केवल arrangement label है—यह अभी वास्तविक आवाज़ या AI singing नहीं बनाता। Sound browser synthesis है, असली recorded stems नहीं।</small></span></div>
+ {error&&<div className="notice" role="status"><span><b>⚠ {error}</b></span></div>}
  <button className="primary-button" disabled={busy} onClick={makePreview}><Sparkles size={16}/>{busy?'Preview बन रहा है…':'Local audio preview बनाएं'}</button>
- {previewUrl&&<div className="recording-tools music-preview-tools"><b>Arrangement sketch · {tempo} BPM</b><audio controls src={previewUrl} className="recorded-audio"/><button className="outline-button" onClick={()=>{const a=document.createElement('a');a.href=previewUrl;a.download='sur-arrangement-sketch.wav';a.click()}}><Download size={14}/> WAV डाउनलोड</button></div>}
+ {previewUrl&&<div className="recording-tools music-preview-tools"><b>Arrangement sketch · {tempo} BPM</b><audio controls src={previewUrl} className="recorded-audio"/><button className="outline-button" onClick={()=>{const a=document.createElement('a');a.href=previewUrl;a.download='sur-arrangement-sketch.wav';document.body.appendChild(a);a.click();a.remove()}}><Download size={14}/> WAV डाउनलोड</button><button className="outline-button" onClick={makePreview} disabled={busy}>नए controls से mix फिर बनाएं</button></div>}
  </section></div>;
 }
