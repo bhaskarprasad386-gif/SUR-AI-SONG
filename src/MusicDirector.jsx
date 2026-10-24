@@ -9,6 +9,9 @@ const DEFAULT_LAYERS=[
  {name:'Percussion',kind:'Rhythm',on:true,volume:55},
 ];
 const moods=['Romantic Bollywood','Acoustic ballad','Indie pop','Cinematic orchestral','Folk fusion','Devotional'];
+const DAILY_ACE_SONG_LIMIT=2;
+function localDayStamp(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function readAceDailyUsage(){try{const saved=JSON.parse(localStorage.getItem('sur-ai-studio-ace-daily-quota-v1')||'{}');return saved.day===localDayStamp()?Math.max(0,Math.min(DAILY_ACE_SONG_LIMIT,Number(saved.count)||0)):0}catch{return 0}}
 const TRACK_OPTIONS=[
  {name:'Flute',kind:'Instrument'},
  {name:'Strings & pads',kind:'Atmosphere'},
@@ -45,6 +48,7 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
  const [aceStatus,setAceStatus]=useState('');
  const [aceBusy,setAceBusy]=useState(false);
  const [aceConnection,setAceConnection]=useState('unknown');
+ const [aceDailyUsage,setAceDailyUsage]=useState(readAceDailyUsage);
  const [aiSingerMode,setAiSingerMode]=useState('मेरी अपनी आवाज़'),[aiBackingVocals,setAiBackingVocals]=useState(true),[aiDuration,setAiDuration]=useState('3 मिनट'),[aiInstrumentPlan,setAiInstrumentPlan]=useState('Soft piano, acoustic guitar, lush strings, gentle tabla, warm bass, light percussion');
 
  const aceBase=()=>{let value=aceEndpoint.trim();while(value.endsWith('/'))value=value.slice(0,-1);if(!value)throw new Error('पहले अपने ACE-Step API server का HTTPS URL डालें।');let parsed;try{parsed=new URL(value)}catch{throw new Error('API URL सही नहीं है। पूरा https:// URL डालें।')}if(!['https:','http:'].includes(parsed.protocol))throw new Error('API URL http या https होना चाहिए।');return value};
@@ -66,6 +70,10 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
  const generateWithAceStep=async()=>{
   if(!(lyrics||'').trim()){setAceStatus('पहले अपने lyrics लिखें या paste करें।');return}
   if((lyrics||'').trim().length>4096){setAceStatus('ACE-Step API के लिए lyrics 4096 characters से छोटे रखें; पहले lyrics छोटा करें।');return}
+  if(aceDailyUsage>=DAILY_ACE_SONG_LIMIT){setAceStatus('आज की मुफ्त व्यक्तिगत सीमा पूरी हो गई ('+DAILY_ACE_SONG_LIMIT+' प्रयास/दिन)। अगली स्थानीय तारीख पर सीमा रीसेट होगी।');return}
+  const nextUsage=aceDailyUsage+1;
+  setAceDailyUsage(nextUsage);
+  try{localStorage.setItem('sur-ai-studio-ace-daily-quota-v1',JSON.stringify({day:localDayStamp(),count:nextUsage}))}catch{}
   setAceBusy(true);setGeneratedMusicUrl('');setAceStatus('ACE-Step में आपके custom lyrics के साथ vocal song task भेज रहे हैं…');
   try{
    const durationMinutes=Number.parseInt(aiDuration,10)||3;
@@ -269,6 +277,7 @@ export default function MusicDirector({title,lyrics,setTitle,setLyrics,saveProje
  {previewUrl&&<div className="recording-tools music-preview-tools"><b>Arrangement sketch · {tempo} BPM</b><audio controls src={previewUrl} className="recorded-audio"/><button className="outline-button" onClick={()=>{const a=document.createElement('a');a.href=previewUrl;a.download='sur-arrangement-sketch.wav';document.body.appendChild(a);a.click();a.remove()}}><Download size={14}/> WAV डाउनलोड</button><button className="outline-button" onClick={makePreview} disabled={busy}>नए controls से mix फिर बनाएं</button></div>}
  <div className="ai-music-panel" style={{border:'1px solid var(--border)',borderRadius:12,padding:12,margin:'12px 0 16px'}}><div className="panel-heading"><div className="heading-icon coral"><AudioWaveform size={18}/></div><div><h3>अंतिम चरण · AI से पूरा गाना बनाएं</h3><p>गीत, आवाज़, reference, tempo और arrangement तैयार होने के बाद ही यहाँ क्लिक करें।</p></div></div><div className="field-group" style={{marginTop:10}}><label className="field-label" htmlFor="ai-singer-mode">गायकी का तरीका</label><select id="ai-singer-mode" className="text-input" value={aiSingerMode} onChange={e=>setAiSingerMode(e.target.value)}><option>मेरी अपनी आवाज़</option><option>AI singer voice</option><option>Male lead + female harmony</option><option>Female lead + male harmony</option><option>Duet / दो गायक</option></select><label className="field-label" htmlFor="ai-duration">गाने की लंबाई</label><select id="ai-duration" className="text-input" value={aiDuration} onChange={e=>setAiDuration(e.target.value)}><option>1 मिनट</option><option>2 मिनट</option><option>3 मिनट</option><option>4 मिनट</option><option>5 मिनट</option></select><label className="field-label" htmlFor="ai-instruments">वाद्य और arrangement</label><textarea id="ai-instruments" className="story-input" rows={2} maxLength={500} value={aiInstrumentPlan} onChange={e=>setAiInstrumentPlan(e.target.value)} placeholder="Piano, guitar, tabla, strings…"/><label className="track-row lyric-toggle"><input type="checkbox" checked={aiBackingVocals} onChange={e=>setAiBackingVocals(e.target.checked)}/><span>Background vocals, harmony और chorus जोड़ें</span></label></div><div className="ace-step-panel" style={{border:'1px solid #cfc4f0',borderRadius:14,padding:14,margin:'14px 0',background:'#fbf9ff'}}>
  <div className="panel-heading"><div className="heading-icon coral"><AudioWaveform size={18}/></div><div><h3>ACE-Step · असली lyrics-to-song जनरेशन</h3><p>यह कनेक्टर आपके custom lyrics को ACE-Step API में भेजता है और तैयार audio file वापस लाता है।</p></div></div>
+ <div className="notice" style={{marginTop:8}}><span><b>दैनिक व्यक्तिगत सीमा · {aceDailyUsage}/{DAILY_ACE_SONG_LIMIT} प्रयास</b><small>एक दिन में अधिकतम 2 AI song-generation प्रयास। प्रयास शुरू होते ही गिने जाते हैं, ताकि बार-बार retry करके server usage अनियंत्रित न हो। यह सीमा इसी browser/device के local storage में है; दूसरे browser/device पर अलग होगी।</small></span></div>
  <div className="notice" style={{marginTop:8}}><span><b>मुफ़्त मॉडल ≠ हमेशा मुफ़्त ऑनलाइन सर्वर</b><small>यहाँ ACE-Step का API server URL चाहिए। GitHub Pages खुद GPU model नहीं चला सकता। URL के बिना जनरेशन शुरू नहीं होगी; ऐप झूठा success नहीं दिखाएगा।</small></span></div>
  <label className="field-label" htmlFor="sur-acestep-endpoint">ACE-Step API server URL</label>
  <input id="sur-acestep-endpoint" className="text-input" type="url" autoComplete="url" value={aceEndpoint} onChange={e=>{setAceEndpoint(e.target.value);setAceConnection('unknown')}} placeholder="https://… आपका ACE-Step API server" style={{marginBottom:8}}/>
